@@ -1,3 +1,14 @@
+# 🚀 Powered by 智谱 GLM-5.3
+
+<div align="center">
+
+# **本工程由智谱 GLM-5.3 大模型开发**
+### AI-Driven Development with Zhipu GLM-5.3
+
+</div>
+
+---
+
 # Project023 AI 短剧生产线
 
 > 优云智算 5090 + ComfyUI | 从剧本到成片的自动化短剧生产管线
