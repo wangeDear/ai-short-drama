@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}AI 短剧生成审核工作台{% endblock %}</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="{{ htmx_url }}" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body{% if project is defined and project %} data-project-id="{{ project.id }}"{% endif %}>
+<header class="topbar">
+  <a class="brand" href="/"><span class="brand-mark">WB</span>AI 短剧生成审核工作台</a>
+  <nav class="mainnav">
+    <a href="/" {% if nav_active is defined and nav_active == 'projects' %}class="active"{% endif %}>项目</a>
+    <a href="/jobs" {% if nav_active is defined and nav_active == 'jobs' %}class="active"{% endif %}>任务中心
+      {% if nav.active_jobs %}<span class="badge">{{ nav.active_jobs }}</span>{% endif %}</a>
+    <a href="/workflows" {% if nav_active is defined and nav_active == 'workflows' %}class="active"{% endif %}>工作流与节点</a>
+    <a href="/settings" {% if nav_active is defined and nav_active == 'settings' %}class="active"{% endif %}>设置</a>
+  </nav>
+  <div class="topbar-side">
+    <span class="muted mono">v{{ app_version }}</span>
+  </div>
+</header>
+
+{% if project is defined and project %}
+<div class="subnav">
+  <span class="subnav-project" title="{{ project.description }}">{{ project.name }}</span>
+  <a href="/projects/{{ project.id }}">概览</a>
+  <a href="/projects/{{ project.id }}/shots">分镜工作台</a>
+  <a href="/projects/{{ project.id }}/characters">角色与资产</a>
+  <a href="/projects/{{ project.id }}/final">成片预览</a>
+  {% if project.is_archived %}<span class="tag st-muted">已归档</span>{% endif %}
+</div>
+{% endif %}
+
+<main class="page">
+  {% set flash_msg = request.query_params.get('msg') %}
+  {% set flash_err = request.query_params.get('err') %}
+  {% if flash_msg %}<div class="flash flash-ok" data-flash>{{ flash_msg }}</div>{% endif %}
+  {% if flash_err %}<div class="flash flash-err" data-flash>{{ flash_err }}</div>{% endif %}
+
+  {% block content %}{% endblock %}
+</main>
+
+<footer class="footer">
+  <span>Project023 工作台 · FastAPI + SQLite + HTMX · 单用户本机部署</span>
+</footer>
+</body>
+</html>

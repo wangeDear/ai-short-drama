@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}成片预览 · {{ project.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>成片预览与合成</h1>
+  <div class="page-head-actions"><a class="btn" href="/projects/{{ project.id }}">&#8592; 项目概览</a></div>
+</div>
+
+<div class="panel">
+  <h2>合成条件（FR-FINAL-001）</h2>
+  <div class="readiness">
+    <div class="progress-bar"><span style="width: {{ (readiness.selected / readiness.total * 100) if readiness.total else 0 }}%"></span></div>
+    <p>
+      已选择最终版本：{{ readiness.selected }} / {{ readiness.total }}
+      {% if readiness.ready %}
+      <span class="tag st-ok">全部就绪，可正式合成</span>
+      {% else %}
+      <span class="tag st-warn">未就绪：{{ '、'.join(readiness.missing[:10]) }}{% if readiness.missing|length > 10 %} 等 {{ readiness.missing|length }} 个{% endif %}</span>
+      {% endif %}
+    </p>
+  </div>
+</div>
+
+<div class="panel-grid two">
+  <section class="panel">
+    <h2>{{ '正式合成' if readiness.ready else '合成配置' }}</h2>
+    {% if active_job %}
+    <div class="job-line {{ status_css(active_job.status) }}">
+      <span class="spin" aria-hidden="true"></span>
+      合成任务进行中 · {{ active_job.current_step }}
+      <a class="mono muted" href="/jobs/{{ active_job.id }}">{{ active_job.id[-8:] }}</a>
+    </div>
+    {% endif %}
+    <form method="post" action="/api/projects/{{ project.id }}/final/compose" class="form-grid">
+      <div class="form-row">
+        <label>分辨率 <input name="resolution" value="{{ project.resolution }}" pattern="\d+x\d+"></label>
+        <label>帧率 <input name="fps" type="number" value="{{ project.fps }}" min="12" max="60"></label>
+        <label>CRF <input name="crf" type="number" value="20" min="12" max="30"></label>
+        <label>编码预设
+          <select name="preset">
+            {% for preset in ['ultrafast', 'veryfast', 'fast', 'medium', 'slow'] %}
+            <option value="{{ preset }}" {{ 'selected' if preset == 'medium' }}>{{ preset }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <label>配乐（工作区相对路径，可选） <input name="music_path" placeholder="projects/{{ project.id }}/music.mp3"></label>
+      {% if not readiness.ready %}
+      <label class="checkline"><input type="checkbox" name="force" value="on">
+        强制生成预览版（未通过分镜使用其最新版本或跳过）</label>
+      {% endif %}
+      <button class="btn primary" type="submit" {{ 'disabled' if active_job }}>
+        {{ '提交正式合成' if readiness.ready else '提交预览合成（强制）' }}
+      </button>
+      {% if not ffmpeg_available %}
+      <p class="flash flash-err">本机未检测到 ffmpeg，合成任务会失败；请安装 ffmpeg 或在 config.json 配置 ffmpeg_bin。</p>
+      {% endif %}
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>分镜顺序与选用版本</h2>
+    {% if entries %}
+    <table class="table">
+      <thead><tr><th>#</th><th>分镜</th><th>采用版本</th><th>时长</th><th>文件</th></tr></thead>
+      <tbody>
+        {% for entry in entries %}
+        <tr>
+          <td class="mono">{{ loop.index }}</td>
+          <td class="mono">{{ entry.shot_code }}</td>
+          <td>v{{ entry.version_number }}</td>
+          <td>{{ fmt_duration(entry.duration) }}</td>
+          <td class="mono muted" title="{{ entry.asset_path }}">{{ entry.asset_path.split('/')[-1] }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="hint">还没有分镜选择最终版本。到分镜工作台逐镜审核并采用。</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel">
+  <h2>成片版本（{{ finals|length }}）</h2>
+  {% if finals %}
+  <div class="final-list">
+    {% for asset in finals %}
+    <div class="final-item">
+      <video controls preload="metadata" src="/media/{{ asset.file_path }}"></video>
+      <div class="final-meta">
+        <b class="mono">{{ asset.file_path.split('/')[-1] }}</b>
+        <span class="muted mono">{{ fmt_dt(asset.created_at) }} · {{ fmt_duration(asset.duration) }} · {{ fmt_size(asset.size_bytes) }}
+          {% if asset.metadata_json.get('force') %} · <span class="tag st-warn">预览版</span>{% endif %}</span>
+        <a class="btn small" href="/media/{{ asset.file_path }}" download>下载</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="hint">还没有成片。</p>
+  {% endif %}
+</section>
+{% endblock %}

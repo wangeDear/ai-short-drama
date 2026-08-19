@@ -1,0 +1,13 @@
+{
+  "runner": {
+    "enabled": false,
+    "command": [
+      "python",
+      "D:/path/to/project023_runner.py",
+      "--manifest",
+      "{manifest_path}"
+    ],
+    "cwd": "{workspace}",
+    "output_path": "outputs/generated/{segment_id}.mp4"
+  }
+}

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}分镜工作台 · {{ project.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>分镜工作台</h1>
+  <div class="page-head-actions">
+    <a class="btn" href="/projects/{{ project.id }}">&#8592; 项目概览</a>
+    <div class="btn-group">
+      <a class="btn {{ 'primary' if view == 'card' }}" href="/projects/{{ project.id }}/shots?{{ request.query_params|omit('view') }}&view=card">卡片</a>
+      <a class="btn {{ 'primary' if view == 'list' }}" href="/projects/{{ project.id }}/shots?{{ request.query_params|omit('view') }}&view=list">紧凑列表</a>
+    </div>
+    <a class="btn" href="/projects/{{ project.id }}/review.csv">导出审核清单</a>
+  </div>
+</div>
+
+<form method="get" action="/projects/{{ project.id }}/shots" class="filter-bar" data-filter-form data-project-id="{{ project.id }}">
+  <input type="hidden" name="view" value="{{ view }}">
+  <label>状态
+    <select name="status">
+      <option value="">全部</option>
+      {% for status in ['draft','image_review','image_approved','video_review','needs_revision','accepted'] %}
+      <option value="{{ status }}" {{ 'selected' if filters.get('status') == status }}>{{ shot_status_labels[status] }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>标记
+    <select name="flag">
+      <option value="">无</option>
+      <option value="failed" {{ 'selected' if filters.get('flag') == 'failed' }}>有失败任务</option>
+      <option value="revision" {{ 'selected' if filters.get('flag') == 'revision' }}>需要修改 / 配置过期</option>
+    </select>
+  </label>
+  <label>场景 <input name="scene" value="{{ filters.get('scene', '') }}" placeholder="场景名"></label>
+  <label>角色 <input name="character" value="{{ filters.get('character', '') }}" placeholder="角色名"></label>
+  <label>工作流
+    <select name="workflow">
+      <option value="">全部</option>
+      {% for workflow in workflows %}
+      <option value="{{ workflow.id }}" {{ 'selected' if filters.get('workflow') == workflow.id }}>{{ workflow.name }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="grow">搜索 <input name="q" value="{{ filters.get('q', '') }}" placeholder="编号 / 标题 / 提示词"></label>
+  <button class="btn" type="submit">筛选</button>
+  <a class="btn ghost" href="/projects/{{ project.id }}/shots">重置</a>
+</form>
+
+<form id="batch-form" method="post" action="/projects/{{ project.id }}/shots/batch" class="batch-bar">
+  <span class="batch-title">批量：</span>
+  <label>操作
+    <select name="action">
+      <option value="approve_images">批准分镜图片</option>
+      <option value="generate">提交视频生成</option>
+      <option value="retry_failed">重试失败任务</option>
+      <option value="change_workflow">更换工作流</option>
+    </select>
+  </label>
+  <label>生成类型
+    <select name="job_type">
+      <option value="video">视频</option>
+      <option value="image">图片</option>
+      <option value="voice">配音</option>
+      <option value="ambience">环境音</option>
+    </select>
+  </label>
+  <label>目标工作流（更换时生效）
+    <select name="workflow_id">
+      <option value="">（选择工作流）</option>
+      {% for workflow in workflows %}<option value="{{ workflow.id }}">{{ workflow.name }}</option>{% endfor %}
+    </select>
+  </label>
+  <button class="btn primary" type="submit" data-confirm="对勾选的分镜执行批量操作？">执行</button>
+  <span class="hint">勾选分镜卡片左上角的复选框后执行。</span>
+</form>
+
+{% include "partials/shots_grid.html" %}
+
+<section class="panel">
+  <h2>新建分镜</h2>
+  <form method="post" action="/api/projects/{{ project.id }}/shots/create" class="form-grid">
+    <div class="form-row">
+      <label>编号 <input name="shot_code" placeholder="自动 S{{ '%02d' % (shots|length + 1) if shots else '01' }}"></label>
+      <label>标题 <input name="title" maxlength="120"></label>
+      <label>时长(秒) <input name="duration" type="number" step="0.5" value="8"></label>
+    </div>
+    <div class="form-row">
+      <label>场景 <input name="scene" maxlength="60"></label>
+      <label>角色（逗号分隔） <input name="characters" maxlength="200"></label>
+    </div>
+    <label>图片提示词 <textarea name="image_prompt" rows="2"></textarea></label>
+    <label>视频提示词 <textarea name="video_prompt" rows="2"></textarea></label>
+    <button class="btn primary" type="submit">创建分镜</button>
+  </form>
+</section>
+{% endblock %}

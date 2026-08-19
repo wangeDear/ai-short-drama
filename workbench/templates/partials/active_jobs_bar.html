@@ -1,0 +1,22 @@
+{# 活跃任务状态条：HTMX 轮询自身；完成与否由 app.js 检测并整页刷新 #}
+<div id="active-jobs-bar"
+     data-project-id="{{ project.id }}"
+     hx-get="/projects/{{ project.id }}/partial/active-jobs"
+     hx-trigger="every 2.5s"
+     hx-swap="outerHTML">
+  {% if active_jobs %}
+  <div class="active-jobs-bar">
+    <span class="spin inline" aria-hidden="true"></span>
+    <span class="aj-title">后台任务进行中（{{ active_jobs|length }}）</span>
+    {% for job in active_jobs[:3] %}
+    <span class="aj-job">
+      <span class="tag {{ status_css(job.status) }}">{{ job_type_labels.get(job.job_type, job.job_type) }}</span>
+      <span class="muted">{{ job.current_step or '排队中' }}</span>
+      <span class="progress-bar small"><span style="width: {{ job.progress }}%"></span></span>
+    </span>
+    {% endfor %}
+    {% if active_jobs|length > 3 %}<span class="muted">+{{ active_jobs|length - 3 }} 个</span>{% endif %}
+    <a class="btn tiny ghost" href="/jobs?project={{ project.id }}">任务中心</a>
+  </div>
+  {% endif %}
+</div>

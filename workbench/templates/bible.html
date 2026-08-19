@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}生产设定 · {{ project.name }}{% endblock %}
+{% block content %}
+{% include "partials/active_jobs_bar.html" %}
+<h1>生产设定与分镜计划 <span class="muted">· {{ project.name }}</span></h1>
+<p class="muted">卡点 B：审核生产设定、镜表、结构化提示词与风险路径。批准后进入图片生成（卡点 C）。</p>
+
+{% set gate_b = gate_states | selectattr("gate", "equalto", "B") | first %}
+
+{% if bible %}
+<div class="panel">
+  <h2>生产设定（Production Bible）· v{{ bible.version_number }}
+    <span class="tag {{ 'st-ok' if bible.status == 'approved' else ('st-warn' if bible.status == 'reviewing' else 'st-failed') }}">{{ version_status_labels.get(bible.status, bible.status) }}</span>
+    <span class="muted">hash {{ bible.content_hash[:8] }}</span>
+  </h2>
+
+  <h3>角色（修改将只使引用该角色的镜头过期，验收 24）</h3>
+  <div class="cards">
+    {% for character in bible.characters_json or [] %}
+    <div class="card">
+      <b>{{ character.name }}</b>
+      <p class="muted">{{ character.appearance or '' }}｜{{ character.costume or '' }}｜{{ character.voice or '' }}</p>
+      <details><summary>编辑（产生新圣经版本）</summary>
+        <form method="post" action="/api/projects/{{ project.id }}/bible/edit" class="form-grid">
+          <input type="hidden" name="item_type" value="character">
+          <input type="hidden" name="name" value="{{ character.name }}">
+          <label>外观 <input name="_skip" value="" hidden></label>
+          <label class="span-2">更新 JSON（如 {"costume": "深蓝工装"}）
+            <textarea name="updates_json" rows="2">{}</textarea>
+          </label>
+          <button class="btn small" type="submit">保存并标记过期</button>
+        </form>
+      </details>
+    </div>
+    {% endfor %}
+  </div>
+
+  <details><summary>场景设定（{{ (bible.scenes_json or []) | length }}）</summary>
+    <table class="table">
+      <tr><th>名称</th><th>时间/天气</th><th>光线</th><th>色彩</th><th>可复用背景</th></tr>
+      {% for scene in bible.scenes_json or [] %}
+      <tr><td>{{ scene.name }}</td><td>{{ scene.time or '—' }} / {{ scene.weather or '—' }}</td>
+          <td>{{ scene.lighting or '—' }}</td><td>{{ scene.palette or '—' }}</td>
+          <td>{{ '是' if scene.reusable_background else '否' }}</td></tr>
+      {% endfor %}
+    </table>
+  </details>
+  <details><summary>道具（{{ (bible.props_json or []) | length }}）与全局风格</summary>
+    <p>{% for prop in bible.props_json or [] %}<span class="tag">{{ prop.name }}·{{ prop.owner or '?' }}</span> {% endfor %}</p>
+    <pre class="mono">{{ bible.global_style_json }}</pre>
+  </details>
+</div>
+{% else %}
+<div class="panel">
+  <p>尚未生成生产设定。请先在「创意与剧本」页完成 A 卡点，再生成生产设定。</p>
+  <form method="post" action="/api/projects/{{ project.id }}/creative/generate">
+    <input type="hidden" name="stage" value="bible">
+    <button class="btn primary" type="submit">生成生产设定</button>
+  </form>
+</div>
+{% endif %}
+
+{% if bible %}
+<div class="panel">
+  <h2>分镜与提示词计划 <span class="muted">（{{ shots | length }} 镜）</span></h2>
+  {% if not shots %}
+  <form method="post" action="/api/projects/{{ project.id }}/creative/generate">
+    <input type="hidden" name="stage" value="shot_plans">
+    <button class="btn primary" type="submit">生成分镜与结构化提示词</button>
+  </form>
+  {% else %}
+  <table class="table">
+    <tr><th>镜号</th><th>景别/运镜</th><th>动作与对白</th><th>时长</th><th>风险标签</th><th>建议路径</th><th>状态</th></tr>
+    {% for shot in shots %}
+    {% set pkg = shot.latest_package %}
+    <tr {% if shot.params_json and shot.params_json.stale %}class="row-stale"{% endif %}>
+      <td><b>{{ shot.shot_code }}</b></td>
+      <td>{{ pkg.image_prompt_json.get('composition', '—') if pkg else '—' }}<br>{{ pkg.video_prompt_json.get('camera_motion', '') if pkg else '' }}</td>
+      <td>{{ shot.video_prompt[:60] if shot.video_prompt else '—' }}{% if shot.voice_text %}<br><span class="muted">🗣 {{ shot.voice_text[:30] }}</span>{% endif %}</td>
+      <td>{{ shot.duration }}s</td>
+      <td>{% for label in shot.risk_labels %}<span class="tag st-failed">{{ label }}</span> {% else %}<span class="muted">—</span>{% endfor %}</td>
+      <td class="muted">{{ pkg.route_suggestion_json.get('recommended', '—')[:40] if pkg else '—' }}</td>
+      <td>
+        {% if pkg %}<span class="tag {{ 'st-ok' if pkg.status == 'approved' else 'st-warn' }}">{{ version_status_labels.get(pkg.status, pkg.status) }}</span>{% else %}<span class="tag">未生成</span>{% endif %}
+        {% if shot.params_json and shot.params_json.stale %}<span class="tag st-failed">过期：{{ shot.params_json.stale.reason[:20] }}</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+
+  <div class="gate-panel">
+    <h3>B 卡点 · 生产包审核</h3>
+    <p class="muted">{{ gate_b.reason if gate_b else '' }}｜支持整包批准，或对单个镜头退回后仅重做该镜（验收 21）。</p>
+    <div class="btn-row">
+      <form method="post" action="/api/projects/{{ project.id }}/gates/B/decide">
+        <input type="hidden" name="decision" value="approve">
+        <button class="btn primary" type="submit">整包批准（放行图片生成）</button>
+      </form>
+    </div>
+    {% for shot in shots %}
+      <details class="scope-return">
+        <summary>{{ shot.shot_code }} 范围操作</summary>
+        <div class="btn-row">
+          <form method="post" action="/api/projects/{{ project.id }}/gates/B/decide" class="inline-form">
+            <input type="hidden" name="decision" value="approve">
+            <input type="hidden" name="scope_type" value="shot">
+            <input type="hidden" name="scope_id" value="{{ shot.id }}">
+            <button class="btn small" type="submit">仅批准该镜</button>
+          </form>
+          <form method="post" action="/api/projects/{{ project.id }}/gates/B/decide" class="inline-form">
+            <input type="hidden" name="decision" value="return">
+            <input type="hidden" name="scope_type" value="shot">
+            <input type="hidden" name="scope_id" value="{{ shot.id }}">
+            <input name="comment" placeholder="退回原因（必填）" required>
+            <button class="btn small danger" type="submit">退回该镜</button>
+          </form>
+          {% if shot.params_json and shot.params_json.stale %}
+          <form method="post" action="/api/projects/{{ project.id }}/creative/generate" class="inline-form">
+            <input type="hidden" name="stage" value="shot_plans">
+            <input type="hidden" name="scope_shot_ids" value="{{ shot.id }}">
+            <button class="btn small" type="submit">仅重做该镜提示词</button>
+          </form>
+          {% endif %}
+        </div>
+      </details>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+<div class="panel">
+  <h2>流水线配置</h2>
+  <form method="post" action="/api/projects/{{ project.id }}/pipeline-config" class="form-grid">
+    <label><input type="checkbox" name="gate_a" {{ 'checked' if project.pipeline_json.get('gates', {}).get('A', true) }} onchange="this.value=this.checked?'on':''"> A 剧本审核卡点</label>
+    <label><input type="checkbox" name="gate_b" {{ 'checked' if project.pipeline_json.get('gates', {}).get('B', true) }} onchange="this.value=this.checked?'on':''"> B 生产包审核卡点</label>
+    <label><input type="checkbox" name="auto_queue_after_c" {{ 'checked' if auto_queue }} onchange="this.value=this.checked?'on':''"> C 通过后自动排队视频（仅已批准镜头）</label>
+    <button class="btn" type="submit">保存配置</button>
+  </form>
+</div>
+{% endif %}
+
+{% if stale_shots %}
+<div class="panel">
+  <h2>过期镜头（stale，旧版本保留可恢复）</h2>
+  <table class="table">
+    <tr><th>镜号</th><th>原因</th><th>范围</th></tr>
+    {% for item in stale_shots %}
+    <tr><td>{{ item.shot_code }}</td><td>{{ item.reason }}</td><td>{{ item.scope }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}

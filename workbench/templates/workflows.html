@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% set nav_active = 'workflows' %}
+{% block title %}工作流与生成节点{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>工作流与生成节点</h1>
+</div>
+
+<section class="panel">
+  <h2>生成节点（FR-COMFY-001）</h2>
+  {% if endpoints %}
+  <table class="table">
+    <thead><tr><th>名称</th><th>类型</th><th>地址</th><th>状态</th><th>GPU</th><th>队列</th><th>模型</th><th>心跳</th><th>操作</th></tr></thead>
+    <tbody>
+      {% for endpoint in endpoints %}
+      {% set ep_models = (endpoint.capabilities_json or {}).get('models') or [] %}
+      <tr>
+        <td>{{ endpoint.name }}</td>
+        <td>{{ 'ComfyUI' if endpoint.endpoint_type == 'comfyui' else 'Mock（离线演示）' }}</td>
+        <td class="mono muted">{{ endpoint.base_url or '—' }}</td>
+        <td><span class="tag {{ status_css(endpoint.status) }}">{{ {'online': '在线', 'offline': '离线', 'unknown': '未知'}.get(endpoint.status, endpoint.status) }}</span></td>
+        <td class="muted">{{ endpoint.gpu_info or '—' }}</td>
+        <td class="mono">{{ endpoint.queue_length }}</td>
+        <td class="mono" title="{{ ep_models[:20]|join('、') }}">{{ ep_models|length if ep_models else '—' }}</td>
+        <td class="mono muted">{{ fmt_dt(endpoint.last_heartbeat_at) }}</td>
+        <td class="actions-cell">
+          <form method="post" action="/api/endpoints/{{ endpoint.id }}/check" class="inline">
+            <button class="btn tiny" type="submit">测试连接</button>
+          </form>
+          <form method="post" action="/api/endpoints/{{ endpoint.id }}/fetch-models" class="inline">
+            <button class="btn tiny" type="submit" title="从节点拉取可用模型列表，用于生成时选择模型">获取模型</button>
+          </form>
+          <form method="post" action="/api/endpoints/{{ endpoint.id }}/delete" class="inline" data-confirm="删除节点 {{ endpoint.name }}？">
+            <button class="btn tiny ghost" type="submit">删除</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="hint">尚未登记生成节点。登记本地 / WSL / 远程 ComfyUI 地址，或添加内置 Mock 节点离线体验流程。</p>
+  {% endif %}
+  <form method="post" action="/api/endpoints/create" class="form-grid narrow">
+    <div class="form-row">
+      <label>名称 <input name="name" required maxlength="60" placeholder="本地 ComfyUI / 5090 远程节点"></label>
+      <label>类型
+        <select name="endpoint_type">
+          <option value="comfyui">ComfyUI</option>
+          <option value="mock">Mock（离线演示）</option>
+        </select>
+      </label>
+    </div>
+    <div class="form-row">
+      <label class="grow">地址 <input name="base_url" placeholder="http://127.0.0.1:8188" class="mono"></label>
+      <label class="checkline"><input type="checkbox" name="check" value="on" checked> 保存后测试</label>
+    </div>
+    <button class="btn primary" type="submit">登记节点</button>
+  </form>
+  <p class="hint">地址与凭据仅保存在本机 SQLite 中，只由后端访问；浏览器不接触任何密钥（FR-COMFY-004）。</p>
+</section>
+
+<section class="panel">
+  <h2>工作流模板（FR-COMFY-002 / FR-COMFY-008）</h2>
+  <p class="hint">导入 ComfyUI「导出 API 格式」的 workflow JSON，并配置业务字段 → 节点输入的映射。可用业务字段：
+    <code>prompt / negative / seed / width / height / fps / frames / duration / input_image / output_prefix / model_name / voice_text / ambience_text</code>。
+    其中 <code>model_name</code> 是生成时选择的模型（如映射到 <code>4.inputs.ckpt_name</code>），留空则使用工作流内置模型。</p>
+  <pre class="log small">参数映射示例：{{ example_mapping }}</pre>
+
+  {% if templates %}
+  <table class="table">
+    <thead><tr><th>名称</th><th>类别</th><th>状态</th><th>更新</th><th>操作</th></tr></thead>
+    <tbody>
+      {% for template in templates %}
+      <tr>
+        <td title="{{ template.description }}">{{ template.name }}</td>
+        <td><span class="tag ghost-tag">{{ workflow_categories.get(template.category, template.category) }}</span></td>
+        <td><span class="tag {{ 'st-ok' if template.enabled else 'st-muted' }}">{{ '启用' if template.enabled else '禁用' }}</span></td>
+        <td class="mono muted">{{ fmt_dt(template.updated_at) }}</td>
+        <td class="actions-cell">
+          <form method="post" action="/api/workflows/{{ template.id }}/toggle" class="inline">
+            <button class="btn tiny" type="submit">{{ '禁用' if template.enabled else '启用' }}</button>
+          </form>
+          <form method="post" action="/api/workflows/{{ template.id }}/delete" class="inline"
+                data-confirm="删除工作流 {{ template.name }}？">
+            <button class="btn tiny ghost" type="submit">删除</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% for template in templates %}
+  <details class="workflow-edit">
+    <summary>编辑「{{ template.name }}」</summary>
+    <form method="post" action="/api/workflows/{{ template.id }}/update" class="form-grid">
+      <div class="form-row">
+        <label>名称 <input name="name" value="{{ template.name }}" maxlength="150"></label>
+        <label>类别
+          <select name="category">
+            {% for value, label in [('keyframe', '关键帧图片生成'), ('h3_t2v', 'H3 文生视频'), ('h3_i2v', 'H3 图生视频'), ('ref_video', '参考视频/角色一致性'), ('character_swap', 'MoCha/Wan Animate 角色替换'), ('inpaint', 'VACE 局部修补'), ('voice', '配音'), ('ambience', '环境音'), ('ffmpeg', 'FFmpeg 合成')] %}
+            <option value="{{ value }}" {{ 'selected' if template.category == value }}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="checkline"><input type="checkbox" name="enabled" value="on" {{ 'checked' if template.enabled }}> 启用</label>
+      </div>
+      <label>说明 <input name="description" value="{{ template.description }}" maxlength="300"></label>
+      <label>工作流 JSON（ComfyUI API 格式） <textarea name="workflow_json" rows="6" class="mono">{{ template.workflow_json | tojson }}</textarea></label>
+      <label>参数映射 JSON <textarea name="parameter_mapping_json" rows="5" class="mono">{{ template.parameter_mapping_json | tojson }}</textarea></label>
+      <button class="btn primary" type="submit">保存修改</button>
+    </form>
+  </details>
+  {% endfor %}
+  {% else %}
+  <p class="hint">还没有工作流模板。</p>
+  {% endif %}
+
+  <details class="workflow-edit">
+    <summary>导入新工作流</summary>
+    <form method="post" action="/api/workflows/create" class="form-grid">
+      <div class="form-row">
+        <label>名称 <input name="name" required maxlength="150"></label>
+        <label>类别
+          <select name="category">
+            {% for value, label in [('keyframe', '关键帧图片生成'), ('h3_t2v', 'H3 文生视频'), ('h3_i2v', 'H3 图生视频'), ('ref_video', '参考视频/角色一致性'), ('character_swap', 'MoCha/Wan Animate 角色替换'), ('inpaint', 'VACE 局部修补'), ('voice', '配音'), ('ambience', '环境音'), ('ffmpeg', 'FFmpeg 合成')] %}
+            <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label class="checkline"><input type="checkbox" name="enabled" value="on"> 立即启用</label>
+      </div>
+      <label>说明 <input name="description" maxlength="300"></label>
+      <label>工作流 JSON（ComfyUI API 格式） <textarea name="workflow_json" rows="8" class="mono" placeholder='{"1": {"class_type": "...", "inputs": {...}}}' required></textarea></label>
+      <label>参数映射 JSON <textarea name="parameter_mapping_json" rows="5" class="mono" placeholder='{"prompt": "12.inputs.text", ...}'></textarea></label>
+      <label>依赖模型 JSON 数组 <textarea name="required_models_json" rows="2" class="mono">[]</textarea></label>
+      <button class="btn primary" type="submit">导入</button>
+    </form>
+  </details>
+</section>
+{% endblock %}

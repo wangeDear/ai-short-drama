@@ -1,0 +1,8 @@
+<div id="shot-grid" class="shot-grid {{ 'list-mode' if view == 'list' }}"
+     hx-get="{{ grid_url }}" hx-trigger="every 5s" hx-swap="outerHTML">
+  {% for shot in shots %}
+    {% include "partials/shot_card.html" %}
+  {% else %}
+    <div class="empty">没有符合条件的分镜。调整筛选条件，或先在下方创建分镜。</div>
+  {% endfor %}
+</div>

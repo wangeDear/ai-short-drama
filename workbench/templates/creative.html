@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}创意与剧本 · {{ project.name }}{% endblock %}
+{% block content %}
+{% include "partials/active_jobs_bar.html" %}
+<h1>创意与剧本 <span class="muted">· {{ project.name }}</span></h1>
+<p class="muted">创意模式：简报 → 故事方案 → 结构化剧本（卡点 A）→ 生产设定与镜表。文本阶段不消耗 GPU。</p>
+
+{% set gate_a = gate_states | selectattr("gate", "equalto", "A") | first %}
+
+<div class="panel">
+  <h2>① 创意简报
+    {% if brief %}<span class="tag {{ 'st-ok' if gate_a and gate_a.status == 'passed' else 'st-warn' }}">
+      {{ gate_a.reason if gate_a else '' }}</span>{% endif %}
+  </h2>
+  {% if brief %}
+    <div class="kv-grid">
+      <div><b>版本</b> v{{ brief.version_number }}</div>
+      <div><b>推断字段</b>
+        {% for k, v in (brief.inferred_fields_json or {}).items() %}<span class="tag">{{ k }}={{ v }}</span> {% endfor %}{% for k, v in (brief.constraints_json or {}).items() %}<span class="tag st-info">{{ k }}={{ v }}</span>{% endfor %}
+      </div>
+    </div>
+    <details><summary>原始创意文本</summary><pre class="mono">{{ brief.source_text }}</pre></details>
+    <div class="estimate-box">
+      <b>生成预估（验收 27）</b>：{{ estimate.scenes }} 场 / {{ estimate.shots }} 镜 /
+      图片任务 {{ estimate.image_tasks }} / 视频任务 {{ estimate.video_tasks }} / 配音 {{ estimate.voice_tasks }} /
+      约 <b>{{ estimate.gpu_minutes }} GPU 分钟</b>（{{ estimate.basis }}）
+      {% if script_estimate %}｜按当前剧本推算：{{ script_estimate.shots }} 镜 / 约 {{ script_estimate.gpu_minutes }} GPU 分钟{% endif %}
+    </div>
+  {% endif %}
+  <form method="post" action="/api/projects/{{ project.id }}/brief" class="form-grid">
+    <label class="span-2">创意描述（建议 ≥50 字，修改会产生新版本）
+      <textarea name="source_text" rows="4" placeholder="例：一个人在沙漠中用太阳能板给手机充电，中途沙暴来袭，他必须决定是保住设备还是赶回公路……">{{ brief.source_text if brief else '' }}</textarea>
+    </label>
+    <label>题材 <input name="genre" value="{{ (brief.constraints_json or {}).get('genre', '') if brief else '' }}"></label>
+    <label>目标平台 <input name="platform" value="{{ (brief.constraints_json or {}).get('platform', '') if brief else '' }}"></label>
+    <label>总时长 <input name="total_duration" placeholder="如 90s" value="{{ (brief.constraints_json or {}).get('total_duration', '') if brief else '' }}"></label>
+    <label>目标镜头数 <input name="target_shots" type="number" value="{{ (brief.constraints_json or {}).get('target_shots', '') if brief else '' }}"></label>
+    <label>写实程度 <input name="realism" value="{{ (brief.constraints_json or {}).get('realism', '') if brief else '' }}"></label>
+    <label>结尾方向 <input name="ending" value="{{ (brief.constraints_json or {}).get('ending', '') if brief else '' }}"></label>
+    <label class="span-2">禁用内容 <input name="avoid" value="{{ (brief.constraints_json or {}).get('avoid', '') if brief else '' }}"></label>
+    <button class="btn primary" type="submit">保存简报（新版本）</button>
+  </form>
+</div>
+
+<div class="panel">
+  <h2>② 故事方案与剧本</h2>
+  <div class="btn-row">
+    <form method="post" action="/api/projects/{{ project.id }}/creative/generate">
+      <input type="hidden" name="stage" value="story_plan">
+      <button class="btn" type="submit">{{ '重新生成故事方案' if story else '生成故事方案' }}</button>
+    </form>
+    {% if story and story.status != 'failed' %}
+    <form method="post" action="/api/projects/{{ project.id }}/creative/generate">
+      <input type="hidden" name="stage" value="script">
+      <button class="btn" type="submit">{{ '重新生成剧本' if script else '生成结构化剧本' }}</button>
+    </form>
+    {% endif %}
+    {% if script and script.status != 'failed' %}
+    <form method="post" action="/api/projects/{{ project.id }}/creative/generate">
+      <input type="hidden" name="stage" value="bible">
+      <button class="btn primary" type="submit">生成生产设定（需 A 卡点通过）</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {% if story and story.status != 'failed' %}
+  <details {% if not script %}open{% endif %}>
+    <summary>故事方案（{{ version_status_labels.get(story.status, story.status) }} · hash {{ story.content_hash[:8] }} · 模型 {{ (story.model_snapshot_json or {}).get('llm', '—') }}）</summary>
+    <div class="kv-grid">
+      <div><b>标题</b> {{ (story.structured_content_json or {}).get('title', '—') }}</div>
+      <div class="span-2"><b>Logline</b> {{ (story.structured_content_json or {}).get('logline', '—') }}</div>
+      <div class="span-2"><b>梗概</b> {{ (story.structured_content_json or {}).get('synopsis', '—') }}</div>
+    </div>
+  </details>
+  {% endif %}
+
+  {% if script and script.status != 'failed' %}
+  <h3>结构化剧本（{{ script_scenes | length }} 场，可逐场编辑后批准 — 卡点 A）</h3>
+  <form method="post" action="/api/projects/{{ project.id }}/script/edit">
+    {% for scene in script_scenes %}
+    {% set data = scene.structured_content_json or {} %}
+    <details class="scene-card">
+      <summary>{{ scene.scene_code }} · {{ scene.title }} · {{ data.get('location', '—') }} / {{ data.get('time_of_day', '—') }} · {{ data.get('duration', 0) }}s</summary>
+      <div class="form-grid">
+        <label class="span-2">动作描述 <textarea name="scene_{{ scene.scene_code }}_action" rows="2">{{ data.get('action', '') }}</textarea></label>
+        <label class="span-2">对白（每行 角色：台词）<textarea name="scene_{{ scene.scene_code }}_dialogue" rows="2">{% for line in data.get('dialogue', []) %}{{ line.role }}：{{ line.line }}
+{% endfor %}</textarea></label>
+        <label>时长(秒) <input name="scene_{{ scene.scene_code }}_duration" type="number" step="0.5" value="{{ data.get('duration', 8) }}"></label>
+      </div>
+    </details>
+    {% endfor %}
+    <button class="btn" type="submit">保存修改为新剧本版本</button>
+  </form>
+
+  <div class="gate-panel">
+    <h3>A 卡点 · 剧本审核</h3>
+    {% if gate_a %}
+    <div class="kv-grid">
+      <div><b>状态</b> <span class="tag {{ 'st-ok' if gate_a.status == 'passed' else ('st-warn' if gate_a.status == 'waiting' else 'st-failed') }}">{{ gate_a.reason }}</span></div>
+      <div><b>输入版本</b> script={{ script.id[:10] }}（hash {{ script.content_hash[:8] }}）</div>
+    </div>
+    {% endif %}
+    <div class="btn-row">
+      <form method="post" action="/api/projects/{{ project.id }}/gates/A/decide">
+        <input type="hidden" name="decision" value="approve">
+        <button class="btn primary" type="submit">批准剧本（放行生产设定）</button>
+      </form>
+      <form method="post" action="/api/projects/{{ project.id }}/gates/A/decide" class="inline-form">
+        <input type="hidden" name="decision" value="return">
+        <input name="comment" placeholder="退回原因（必填，供下次生成使用）" required>
+        <button class="btn danger" type="submit">退回修改</button>
+      </form>
+    </div>
+  </div>
+  {% elif script and script.status == 'failed' %}
+  <div class="alert alert-error">剧本生成失败：结构化输出不符合 schema（已自动修复仍失败）。原始输出与错误已保留，可重新生成。</div>
+  <details><summary>查看失败版本原始输出</summary><pre class="mono">{{ script.raw_model_output[:3000] }}</pre></details>
+  {% endif %}
+
+  {% for failed in failed_structs %}
+  <details><summary>失败记录 · {{ failed.version_type }} · {{ fmt_dt(failed.created_at) }}</summary>
+    <pre class="mono">{{ failed.raw_model_output[:2000] }}</pre></details>
+  {% endfor %}
+</div>
+
+{% if gate_history %}
+<div class="panel">
+  <h2>卡点决定历史（可追溯，验收 29）</h2>
+  <table class="table">
+    <tr><th>卡点</th><th>决定</th><th>范围</th><th>输入版本</th><th>备注</th><th>时间</th></tr>
+    {% for record in gate_history %}
+    <tr>
+      <td>{{ record.gate_type }}</td>
+      <td><span class="tag {{ 'st-ok' if record.decision == 'approved' else 'st-failed' }}">{{ '批准' if record.decision == 'approved' else '退回' }}</span></td>
+      <td>{{ record.scope_type }}{% if record.scope_id %} {{ record.scope_id[:10] }}{% endif %}</td>
+      <td class="mono">{% for k, v in record.input_version_refs_json.items() %}{% if v %}{{ k }}={{ (v | string)[:10] }} {% endif %}{% endfor %}</td>
+      <td>{{ record.comment or '—' }}</td>
+      <td>{{ fmt_dt(record.decided_at) }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}

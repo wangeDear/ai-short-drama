@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% set nav_active = 'settings' %}
+{% block title %}系统设置{% endblock %}
+{% block content %}
+<div class="page-head"><h1>系统设置</h1></div>
+
+<div class="panel-grid two">
+  <section class="panel">
+    <h2>运行环境</h2>
+    <table class="table keyval">
+      <tbody>
+        <tr><th>工作台版本</th><td class="mono">v{{ app_version }}</td></tr>
+        <tr><th>工作区根目录</th><td class="mono">{{ cfg.workspace_root }}</td></tr>
+        <tr><th>数据库</th><td class="mono">{{ cfg.db_path }}</td></tr>
+        <tr><th>缩略图缓存</th><td class="mono">{{ cfg.thumbs_dir }}</td></tr>
+        <tr><th>监听地址</th><td class="mono">{{ cfg.host }}:{{ cfg.port }}（默认仅本机）</td></tr>
+        <tr><th>后台 Worker</th><td>{{ '运行中' if worker_running else '未启动' }} · 并发 {{ cfg.worker_concurrency }} · 轮询 {{ cfg.poll_interval }}s</td></tr>
+        <tr><th>僵死任务阈值</th><td>{{ cfg.stale_job_minutes }} 分钟无心跳判失败</td></tr>
+        <tr><th>ffmpeg</th><td>{{ '可用' if ffmpeg_available else '未检测到（合成/抽帧/视频缩略图不可用）' }} <span class="mono">{{ cfg.ffmpeg_bin }}</span></td></tr>
+        <tr><th>HTMX</th><td class="mono">{{ htmx_url }}</td></tr>
+      </tbody>
+    </table>
+    <div class="action-row">
+      <form method="post" action="/api/settings/recover"><button class="btn" type="submit">恢复僵死任务</button></form>
+      <form method="post" action="/api/settings/check-all"><button class="btn" type="submit">检测全部生成节点</button></form>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>生成节点状态</h2>
+    {% if endpoints %}
+    <ul class="plain-list">
+      {% for endpoint in endpoints %}
+      <li><span class="tag {{ status_css(endpoint.status) }}">{{ endpoint.name }}</span>
+        <span class="mono muted">{{ endpoint.base_url or '内置' }}</span>
+        <span class="muted">心跳 {{ fmt_dt(endpoint.last_heartbeat_at) }}</span></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="hint">尚未登记节点，到「工作流与节点」添加。</p>
+    {% endif %}
+
+    <h3>等待节点的任务（{{ waiting_jobs|length }}）</h3>
+    {% if waiting_jobs %}
+    <ul class="plain-list">
+      {% for job in waiting_jobs[:10] %}
+      <li><a class="mono" href="/jobs/{{ job.id }}">{{ job.id[-8:] }}</a>
+        <span class="muted">{{ job_type_labels.get(job.job_type, job.job_type) }} · {{ job.current_step }}</span></li>
+      {% endfor %}
+    </ul>
+    <p class="hint">ComfyUI 离线时任务保留在队列，节点恢复后自动继续。</p>
+    {% else %}
+    <p class="hint">当前没有因节点离线而等待的任务。</p>
+    {% endif %}
+
+    <h3>安全边界（11.4）</h3>
+    <ul class="plain-list muted">
+      <li>仅监听本机，不对公网开放；</li>
+      <li>凭据不出现在前端与日志；文件访问限制在工作区根目录内；</li>
+      <li>归档代替删除，素材不会被误删。</li>
+    </ul>
+  </section>
+</div>
+
+<section class="panel">
+  <h2>文本模型（LLM）</h2>
+  <p class="hint">
+    保存后立即生效（无需重启），并写入 <span class="mono">{{ llm_config_file }}</span>。
+    优先级：config.json &gt; 环境变量 WORKBENCH_LLM_* &gt; 默认 mock（离线演示）。
+    API Key 仅存后端，页面永不回显。
+  </p>
+  <form method="post" action="/api/settings/llm" class="form-grid narrow">
+    <label>类型
+      <select name="llm_type">
+        <option value="mock" {% if cfg.llm_type == 'mock' %}selected{% endif %}>mock（离线演示，零依赖）</option>
+        <option value="openai" {% if cfg.llm_type == 'openai' %}selected{% endif %}>openai（OpenAI-compatible 接口）</option>
+      </select>
+    </label>
+    <label>接口地址 base_url（openai 必填）
+      <input name="llm_base_url" placeholder="https://api.xxx.com/v1" value="{{ cfg.llm_base_url }}">
+    </label>
+    <label>模型名（openai 必填）
+      <input name="llm_model" placeholder="glm-4.7 / deepseek-chat / 本地 vLLM 模型名" value="{{ cfg.llm_model }}">
+    </label>
+    <label>API Key
+      <input type="password" name="llm_api_key" autocomplete="new-password"
+             placeholder="{{ llm_key_masked if llm_key_masked else 'sk-…（留空保持不变）' }}">
+    </label>
+    <label>请求超时（秒，留空恢复默认 180）
+      <input name="llm_timeout_seconds" value="{{ '%g'|format(cfg.llm_timeout_seconds) }}">
+    </label>
+    <label>JSON 校验失败自动修复次数（0~5，留空恢复默认 2）
+      <input name="llm_max_repair" value="{{ cfg.llm_max_repair }}">
+    </label>
+    <label><input type="checkbox" name="clear_api_key" value="on"> 清除已保存的 API Key</label>
+    <div class="action-row">
+      <button class="btn primary" type="submit">保存并生效</button>
+    </div>
+  </form>
+  <form method="post" action="/api/settings/llm/test" class="action-row">
+    <button class="btn" type="submit">测试连接（用当前生效配置）</button>
+    <span class="hint" style="margin:0">openai 类型会发送一次最小对话请求验证地址 / 模型 / Key。</span>
+  </form>
+</section>
+{% endblock %}

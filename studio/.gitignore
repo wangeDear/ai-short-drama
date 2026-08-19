@@ -1,0 +1,4 @@
+config.json
+data/jobs/
+__pycache__/
+tests/__pycache__/

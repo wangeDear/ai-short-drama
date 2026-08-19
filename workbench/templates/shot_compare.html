@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}版本对比 · {{ shot.shot_code }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>版本对比 · <span class="mono">{{ shot.shot_code }}</span></h1>
+  <div class="page-head-actions">
+    <a class="btn" href="/projects/{{ project.id }}/shots/{{ shot.id }}">&#8592; 分镜详情</a>
+  </div>
+</div>
+
+<form method="get" class="filter-bar" data-nopersist>
+  <input type="hidden" name="type" value="{{ type }}">
+  <label>左侧
+    <select name="v1" onchange="this.form.submit()">
+      {% for version in versions %}
+      <option value="{{ version.id }}" {{ 'selected' if version.id == left.id }}>v{{ version.version_number }} · {{ version_status_labels.get(version.status, version.status) }} · {{ fmt_dt(version.created_at) }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>右侧
+    <select name="v2" onchange="this.form.submit()">
+      {% for version in versions %}
+      <option value="{{ version.id }}" {{ 'selected' if version.id == right.id }}>v{{ version.version_number }} · {{ version_status_labels.get(version.status, version.status) }} · {{ fmt_dt(version.created_at) }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="sync-toggle">
+    <input type="checkbox" id="sync-play" checked> 同步播放
+  </label>
+</form>
+
+<div class="compare-grid" data-compare>
+  {% for side, version, assets in [('left', left, left_assets), ('right', right, right_assets)] %}
+  <div class="panel compare-pane">
+    <h2>{{ '左侧' if side == 'left' else '右侧' }} · v{{ version.version_number }}
+      <span class="tag {{ status_css(version.status) }}">{{ version_status_labels.get(version.status, version.status) }}</span>
+    </h2>
+    {% for asset in assets %}
+      {% if asset.asset_type == 'video' %}
+      <video controls preload="metadata" data-compare-video src="/media/{{ asset.file_path }}"></video>
+      <p class="hint mono">{{ asset.file_path }}<br>{{ asset.width }}x{{ asset.height }} · {{ fmt_duration(asset.duration) }} · {{ fmt_size(asset.size_bytes) }}</p>
+      {% elif asset.asset_type == 'image' %}
+      <a href="/media/{{ asset.file_path }}" target="_blank" rel="noopener"><img class="media-large" src="/media/{{ asset.file_path }}" alt="v{{ version.version_number }}"></a>
+      {% else %}
+      <audio controls preload="metadata" src="/media/{{ asset.file_path }}"></audio>
+      {% endif %}
+    {% endfor %}
+    <div class="compare-meta mono muted">
+      {% if version.seed is not none %}<span>seed {{ version.seed }}</span>{% endif %}
+      {% if version.workflow_hash %}<span>workflow {{ version.workflow_hash }}</span>{% endif %}
+      <span>{{ fmt_dt(version.created_at) }}</span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<section class="panel">
+  <h2>提示词 / 参数差异</h2>
+  <pre class="diff">{{ diff }}</pre>
+</section>
+
+<section class="panel">
+  <h2>选择最终采用版本</h2>
+  <div class="action-row">
+    {% if left.version_type == 'video' %}
+    <form hx-post="/api/shots/{{ shot.id }}/select-version" 
+          method="post" action="/api/shots/{{ shot.id }}/select-version">
+      <input type="hidden" name="version_id" value="{{ left.id }}">
+      <button class="btn primary" type="submit">采用左侧 v{{ left.version_number }}</button>
+    </form>
+    {% endif %}
+    {% if right.version_type == 'video' %}
+    <form hx-post="/api/shots/{{ shot.id }}/select-version" 
+          method="post" action="/api/shots/{{ shot.id }}/select-version">
+      <input type="hidden" name="version_id" value="{{ right.id }}">
+      <button class="btn primary" type="submit">采用右侧 v{{ right.version_number }}</button>
+    </form>
+    {% endif %}
+    <p class="hint">被替换的版本会保留为「已被替换」，随时可以换回来。</p>
+  </div>
+</section>
+<div id="flash-anchor"></div>
+{% endblock %}

@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% set nav_active = 'projects' %}
+{% block title %}项目 · AI 短剧生成审核工作台{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>项目</h1>
+  <div class="page-head-actions">
+    <a class="btn" href="/?include_archived={{ '0' if include_archived else '1' }}">
+      {{ '隐藏归档' if include_archived else '显示归档' }}</a>
+  </div>
+</div>
+
+<div class="panel-grid two">
+  <section class="panel">
+    <h2>创建项目</h2>
+    <form method="post" action="/api/projects/create" class="form-grid">
+      <label>项目名称 <input name="name" required maxlength="120" placeholder="例如：森林求生 · 取火篇"></label>
+      <label>简介 <input name="description" maxlength="300" placeholder="画幅、题材、备注"></label>
+      <div class="form-row">
+        <label>画面比例
+          <select name="aspect_ratio">
+            <option value="9:16">9:16 竖屏</option>
+            <option value="16:9">16:9 横屏</option>
+            <option value="1:1">1:1</option>
+          </select>
+        </label>
+        <label>默认分辨率 <input name="resolution" value="1216x704" pattern="\d+x\d+"></label>
+        <label>帧率 <input name="fps" type="number" value="24" min="12" max="60"></label>
+      </div>
+      <button class="btn primary" type="submit">创建</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>导入已有项目</h2>
+    <form method="post" action="/api/projects/import" class="form-grid">
+      <label>导入方式
+        <select name="mode">
+          <option value="legacy">旧导演审核台 project.json（studio/data/project.json）</option>
+          <option value="scan">扫描目录中的分段视频（按文件名分镜编号，如 csr_S01_00001_.mp4）</option>
+          <option value="manifest">工作台清单 JSON（约定格式，见 README）</option>
+        </select>
+      </label>
+      <label>路径（相对于工作区或绝对路径）
+        <input name="path" required placeholder="studio/data/project.json 或 outputs">
+      </label>
+      <label>项目名称（仅扫描导入时可选） <input name="name" maxlength="120"></label>
+      <button class="btn primary" type="submit">导入</button>
+    </form>
+    <p class="hint">导入不会复制或改动源文件，只登记引用；旧版本全部保留。</p>
+  </section>
+</div>
+
+<section class="panel">
+  <h2>① 创意模式 <span class="tag st-info">v0.3</span></h2>
+  <p class="hint">输入一段自然语言创意（≥50 字更佳），系统经文本模型生成故事方案与结构化剧本，人工审核（卡点 A）后再提取
+    生产设定与结构化提示词。禁止把原始描述直接复制为图片/视频提示词——提示词由结构化包拼装生成。
+    未配置文本模型时使用内置离线模型（mock）演示全流程。</p>
+  <form method="post" action="/api/projects/create-creative" class="form-grid">
+    <div class="form-row">
+      <label class="grow">项目名称 <input name="name" required maxlength="120" placeholder="例如：沙漠离网电力篇"></label>
+      <label>画面比例
+        <select name="aspect_ratio">
+          <option value="9:16">9:16 竖屏</option>
+          <option value="16:9">16:9 横屏</option>
+        </select>
+      </label>
+      <label>分辨率 <input name="resolution" value="704x1216" pattern="\d+x\d+"></label>
+    </div>
+    <label>创意描述 <textarea name="source_text" rows="6" required
+      placeholder="例：一个电工在沙漠深处维护离网光伏电站，沙暴即将来临，他的手机只剩 2% 电量，必须在保住设备与赶回公路之间做出选择……（建议 ≥50 字）"></textarea></label>
+    <div class="form-row">
+      <label>题材 <input name="genre" placeholder="写实短剧"></label>
+      <label>目标镜头数 <input name="target_shots" type="number" placeholder="留空自动推断"></label>
+      <label>写实程度 <input name="realism" placeholder="写实"></label>
+      <label>结尾方向 <input name="ending" placeholder="留有余味"></label>
+    </div>
+    <button class="btn primary" type="submit">创建并生成故事方案</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>② 剧本模式 · 剧本 → 自动分镜</h2>
+  <p class="hint">粘贴剧本文本，自动识别三种格式：Markdown 镜表（docs/07 同款）、结构化剧本（场/镜标题 + 角色台词）、
+    纯叙事文本（按时长聚句分段）。台词镜时长按「字数÷4字/s+2s」公式（流水线 v2 规范）；seed 按镜序派生。
+    解析后的提示词只是叙述文本草稿，建议先润色成六段式模板再生成视频。</p>
+  <form method="post" action="/api/projects/import-script" class="form-grid">
+    <div class="form-row">
+      <label class="grow">项目名称 <input name="name" required maxlength="120" placeholder="例如：沙漠生存 · 离网电力篇"></label>
+      <label>画面比例
+        <select name="aspect_ratio">
+          <option value="9:16">9:16 竖屏</option>
+          <option value="16:9">16:9 横屏</option>
+        </select>
+      </label>
+      <label>分辨率 <input name="resolution" value="544x960" pattern="\d+x\d+"></label>
+      <label>帧率 <input name="fps" type="number" value="24" min="12" max="60"></label>
+    </div>
+    <div class="form-row">
+      <label>无台词镜默认时长(秒) <input name="default_seconds" type="number" step="0.5" value="6" min="3" max="15"></label>
+      <label>叙事分段目标时长(秒) <input name="target_seconds" type="number" step="0.5" value="10" min="4" max="15"></label>
+      <label class="checkline"><input type="checkbox" name="auto_image" value="on"> 创建后自动批量提交图片生成</label>
+    </div>
+    <label>剧本文本 <textarea name="text" rows="10" required
+      placeholder="支持：&#10;| S01 | 口型·自拍 | 10s | 画面描述 | &quot;台词&quot; | soundscape |&#10;## 第一场 沙漠清晨&#10;她举起手机，屏幕显示 2% 电量。&#10;林夏：兄弟们，手机只剩百分之二的电。"></textarea></label>
+    <button class="btn primary" type="submit">解析并创建分镜</button>
+  </form>
+</section>
+
+{% if projects %}
+<div class="project-grid">
+  {% for project in projects %}
+  {% set s = stats[project.id] %}
+  <a class="project-card {{ 'archived' if project.is_archived }}" href="/projects/{{ project.id }}">
+    <div class="project-card-head">
+      <strong class="project-name">{{ project.name }}</strong>
+      <span class="tag {{ status_css('queued') if project.is_archived else status_css('running') }}">
+        {{ '已归档' if project.is_archived else stages[project.id] }}</span>
+    </div>
+    <p class="project-desc">{{ project.description or '（无简介）' }}</p>
+    <div class="project-meta mono">
+      <span>{{ project.aspect_ratio }} · {{ project.resolution }} · {{ project.fps }}fps</span>
+      <span>更新 {{ fmt_dt(project.updated_at) }}</span>
+    </div>
+    <div class="project-stats">
+      <span class="stat"><b>{{ s.accepted_shots }}</b>/{{ s.total_shots }} 分镜通过</span>
+      {% if s.running_jobs %}<span class="stat st-running">{{ s.running_jobs }} 生成中</span>{% endif %}
+      {% if s.queued_jobs %}<span class="stat st-queued">{{ s.queued_jobs }} 排队</span>{% endif %}
+      {% if s.failed_jobs %}<span class="stat st-failed">{{ s.failed_jobs }} 失败</span>{% endif %}
+      {% if s.last_final %}<span class="stat st-ok">有成片</span>{% endif %}
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">还没有项目。先创建一个，或在右侧从 outputs/ 目录导入现有分段视频。</div>
+{% endif %}
+{% endblock %}

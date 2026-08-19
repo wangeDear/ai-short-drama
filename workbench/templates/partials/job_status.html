@@ -1,0 +1,12 @@
+<div class="job-status-block" id="job-status-{{ job.id }}"
+     {% if job.status in ('queued', 'running') %}hx-get="/jobs/{{ job.id }}?partial=status" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <div class="job-status-head">
+    <span class="tag big {{ status_css(job.status) }}">{{ job_status_labels.get(job.status, job.status) }}</span>
+    {% if job.status == 'running' %}<span class="spin" aria-hidden="true"></span>{% endif %}
+    <span class="job-step">{{ job.current_step or '—' }}</span>
+  </div>
+  <div class="progress-bar"><span style="width: {{ job.progress }}%"></span></div>
+  {% if job.error_message %}
+  <div class="flash flash-err">{{ job.error_message }}</div>
+  {% endif %}
+</div>

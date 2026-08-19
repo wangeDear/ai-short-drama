@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+{% block title %}{{ shot.shot_code }} · {{ project.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1><span class="mono">{{ shot.shot_code }}</span> {{ shot.title or '' }}</h1>
+  <div class="page-head-actions">
+    <a class="btn" href="/projects/{{ project.id }}/shots">&#8592; 分镜列表</a>
+    <span class="tag {{ status_css(shot.status) }}">{{ shot_status_labels.get(shot.status, shot.status) }}</span>
+    {% if shot.video_config_stale %}<span class="tag st-warn">视频配置已过期</span>{% endif %}
+  </div>
+</div>
+
+<div class="detail-grid">
+  <section class="detail-media">
+    <div class="panel">
+      <h2>分镜图片
+        {% if view.image_version %}<span class="tag {{ status_css(view.image_version.status) }}">v{{ view.image_version.version_number }} · {{ version_status_labels.get(view.image_version.status, view.image_version.status) }}</span>{% endif %}
+      </h2>
+      {% if view.image_asset %}
+      <a href="/media/{{ view.image_asset.file_path }}" target="_blank" rel="noopener">
+        <img class="media-large" src="/media/{{ view.image_asset.file_path }}" alt="分镜图">
+      </a>
+      <p class="hint mono">{{ view.image_asset.file_path }} · {{ view.image_asset.width }}x{{ view.image_asset.height }} · {{ fmt_size(view.image_asset.size_bytes) }}</p>
+      {% else %}
+      <div class="empty">暂无分镜图片。可在下方提交图片生成或登记已有文件。</div>
+      {% endif %}
+      <div class="action-row">
+        <form hx-post="/api/shots/{{ shot.id }}/review" method="post" action="/api/shots/{{ shot.id }}/review">
+          <input type="hidden" name="action" value="approve_image">
+          <button class="btn primary" type="submit">批准图片</button>
+        </form>
+        <form hx-post="/api/shots/{{ shot.id }}/review" method="post" action="/api/shots/{{ shot.id }}/review">
+          <input type="hidden" name="action" value="return_image">
+          <button class="btn ghost" type="submit">退回修改</button>
+        </form>
+        <form class="generate-inline" hx-post="/api/shots/{{ shot.id }}/generate" method="post" action="/api/shots/{{ shot.id }}/generate">
+          <input type="hidden" name="job_type" value="image">
+          {% if model_options %}
+          <select name="model_name" title="选择图片模型（默认使用工作流内置模型）">
+            <option value="">模型：默认</option>
+            {% for model in model_options %}<option value="{{ model }}" {{ 'selected' if shot.params_json.get('image_model') == model }}>{{ model }}</option>{% endfor %}
+          </select>
+          {% endif %}
+          <button class="btn" type="submit">{{ '重新生成图片' if view.image_version else '生成图片' }}</button>
+        </form>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>视频
+        {% if view.selected_version %}<span class="tag st-ok">采用 v{{ view.selected_version.version_number }}</span>{% endif %}
+      </h2>
+      {% set shown_asset = view.selected_asset or view.video_asset %}
+      {% if shown_asset %}
+      <video class="media-large" controls preload="metadata" src="/media/{{ shown_asset.file_path }}"></video>
+      <p class="hint mono">{{ shown_asset.file_path }}<br>
+        {{ shown_asset.width }}x{{ shown_asset.height }} · {{ fmt_duration(shown_asset.duration) }} · {{ fmt_size(shown_asset.size_bytes) }}</p>
+      {% else %}
+      <div class="empty">暂无视频版本。图片批准后可提交视频生成。</div>
+      {% endif %}
+      <div class="action-row">
+        <form class="generate-inline" hx-post="/api/shots/{{ shot.id }}/generate" method="post" action="/api/shots/{{ shot.id }}/generate">
+          <input type="hidden" name="job_type" value="video">
+          {% if model_options %}
+          <select name="model_name" title="选择视频模型（默认使用工作流内置模型）">
+            <option value="">模型：默认</option>
+            {% for model in model_options %}<option value="{{ model }}" {{ 'selected' if shot.params_json.get('video_model') == model }}>{{ model }}</option>{% endfor %}
+          </select>
+          {% endif %}
+          <button class="btn primary" type="submit">{{ '重做视频（生成新版本）' if view.video_version else '提交视频生成' }}</button>
+        </form>
+        {% if view.version_counts.get('video', 0) >= 2 %}
+        <a class="btn" href="/projects/{{ project.id }}/shots/{{ shot.id }}/compare">版本对比</a>
+        {% endif %}
+        <form hx-post="/api/shots/{{ shot.id }}/review" method="post" action="/api/shots/{{ shot.id }}/review">
+          <input type="hidden" name="action" value="needs_revision">
+          <button class="btn ghost" type="submit">标记需要修改</button>
+        </form>
+      </div>
+      {% if shot.video_config_stale %}
+      <p class="flash flash-err">提示词或参数已修改，当前采用版本与配置不一致，建议重做。</p>
+      {% endif %}
+    </div>
+
+    {% if view.audio_asset %}
+    <div class="panel">
+      <h2>配音 / 音频</h2>
+      <audio controls preload="metadata" src="/media/{{ view.audio_asset.file_path }}"></audio>
+      <div class="action-row">
+        <form hx-post="/api/shots/{{ shot.id }}/review" method="post" action="/api/shots/{{ shot.id }}/review">
+          <input type="hidden" name="action" value="approve_audio">
+          <button class="btn" type="submit">批准配音</button>
+        </form>
+        <form hx-post="/api/shots/{{ shot.id }}/generate" method="post" action="/api/shots/{{ shot.id }}/generate">
+          <input type="hidden" name="job_type" value="voice">
+          <button class="btn" type="submit">重新生成配音</button>
+        </form>
+        <form hx-post="/api/shots/{{ shot.id }}/generate" method="post" action="/api/shots/{{ shot.id }}/generate">
+          <input type="hidden" name="job_type" value="ambience">
+          <button class="btn ghost" type="submit">生成环境音</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if view.reference_assets %}
+    <div class="panel">
+      <h2>参考素材（{{ view.reference_assets|length }}）</h2>
+      <div class="ref-grid">
+        {% for asset in view.reference_assets %}
+        <a href="/media/{{ asset.file_path }}" target="_blank" rel="noopener" title="{{ asset.original_filename }}">
+          <img loading="lazy" src="/thumb/{{ asset.id }}" alt="{{ asset.original_filename }}">
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="panel">
+      <h2>上传参考素材 / 登记已有文件</h2>
+      <div class="panel-grid two">
+        <form method="post" action="/api/shots/{{ shot.id }}/upload-reference" enctype="multipart/form-data" class="form-grid">
+          <label>上传文件（图片/视频/音频） <input type="file" name="file" required></label>
+          <label>标签 <input name="label" maxlength="60" placeholder="角色参考 / 场景 / 遮罩"></label>
+          <button class="btn" type="submit">上传</button>
+        </form>
+        <form method="post" action="/api/shots/{{ shot.id }}/register-file" class="form-grid">
+          <label>类型
+            <select name="version_type">
+              <option value="image">分镜图片</option>
+              <option value="video">分段视频</option>
+              <option value="audio">配音</option>
+            </select>
+          </label>
+          <label>工作区相对路径 <input name="file_path" required placeholder="outputs/xxx/S01.mp4"></label>
+          <label>标签 <input name="label" value="手动导入" maxlength="60"></label>
+          <button class="btn" type="submit">登记为版本</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <section class="detail-side">
+    {% if package %}
+    <div class="panel">
+      <h2>结构化提示词包 · v{{ package.version_number }}
+      <span class="tag {{ 'st-ok' if package.status == 'approved' else 'st-warn' }}">{{ version_status_labels.get(package.status, package.status) }}</span>
+      {% if package.risk_tags_json %}{% for tag in package.risk_tags_json[:3] %}<span class="tag st-failed" title="风险标签">{{ tag }}</span>{% endfor %}{% endif %}
+      </h2>
+      <p class="hint">字段级编辑；保存后自动重新拼装提示词并产生新版本（不覆盖）。数组字段用逗号分隔。</p>
+      <form id="package-edit-form" method="post" action="/api/shots/{{ shot.id }}/package/edit" class="form-grid pkg-form">
+        <details open>
+          <summary>图片提示词包</summary>
+          <div class="form-row">
+            <label class="grow">身份/资产引用（逗号分隔）
+              <input name="f_image_identity_refs" value="{{ (package.image_prompt_json.get('identity_refs') or []) | join(', ') }}"></label>
+          </div>
+          {% for field, label in [('moment', '画面瞬间'), ('composition', '构图'), ('environment', '环境'), ('lighting', '光线'), ('lens', '镜头'), ('style', '风格'), ('negative', '负面约束')] %}
+          <label>{{ label }} <input name="f_image_{{ field }}" value="{{ package.image_prompt_json.get(field, '') }}"></label>
+          {% endfor %}
+        </details>
+        <details>
+          <summary>视频提示词包</summary>
+          {% for field, label in [('input_frame', '输入帧/参考'), ('subject_action', '主体动作'), ('object_interaction', '物体交互'), ('camera_motion', '相机运动'), ('timing', '时间节奏'), ('boundary_constraints', '首尾帧约束'), ('negative', '负面约束')] %}
+          <label>{{ label }} <input name="f_video_{{ field }}" value="{{ package.video_prompt_json.get(field, '') }}"></label>
+          {% endfor %}
+        </details>
+        <details>
+          <summary>声音提示词包</summary>
+          {% for field, label in [('dialogue', '对白/旁白'), ('delivery', '说话方式'), ('ambience', '环境音'), ('music', '音乐建议')] %}
+          <label>{{ label }} <input name="f_audio_{{ field }}" value="{{ package.audio_prompt_json.get(field, '') }}"></label>
+          {% endfor %}
+        </details>
+        <input type="hidden" name="image_json"><input type="hidden" name="video_json"><input type="hidden" name="audio_json">
+        <button class="btn primary" type="submit">保存提示词包（新版本并重新拼装）</button>
+      </form>
+    </div>
+    {% endif %}
+
+    <div class="panel">
+      <h2>编辑分镜</h2>
+      <form method="post" action="/api/shots/{{ shot.id }}/update" class="form-grid">
+        <div class="form-row">
+          <label>编号 <input name="shot_code" value="{{ shot.shot_code }}" maxlength="40"></label>
+          <label>标题 <input name="title" value="{{ shot.title }}" maxlength="120"></label>
+        </div>
+        <div class="form-row">
+          <label>时长(秒) <input name="duration" type="number" step="0.5" value="{{ shot.duration }}"></label>
+          <label>Seed <input name="seed" value="{{ shot.seed if shot.seed is not none else '' }}" placeholder="留空随机"></label>
+        </div>
+        <div class="form-row">
+          <label>图片模型 <input name="image_model" list="model-options" class="mono"
+            value="{{ shot.params_json.get('image_model', '') }}" placeholder="留空用工作流内置模型"></label>
+          <label>视频模型 <input name="video_model" list="model-options" class="mono"
+            value="{{ shot.params_json.get('video_model', '') }}" placeholder="留空用工作流内置模型"></label>
+        </div>
+        <datalist id="model-options">
+          {% for model in model_options %}<option value="{{ model }}"></option>{% endfor %}
+        </datalist>
+        <div class="form-row">
+          <label>场景 <input name="scene" value="{{ shot.scene }}" maxlength="60"></label>
+          <label>角色（逗号分隔） <input name="characters" value="{{ shot.characters }}" maxlength="200"></label>
+        </div>
+        <label>画面描述 <textarea name="description" rows="2">{{ shot.description }}</textarea></label>
+        <label>图片提示词 <textarea name="image_prompt" rows="3">{{ shot.image_prompt }}</textarea></label>
+        <label>图片负向提示词 <textarea name="image_negative" rows="2">{{ shot.image_negative }}</textarea></label>
+        <label>视频提示词 <textarea name="video_prompt" rows="3">{{ shot.video_prompt }}</textarea></label>
+        <label>视频负向提示词 <textarea name="video_negative" rows="2">{{ shot.video_negative }}</textarea></label>
+        <label>配音文本 <textarea name="voice_text" rows="2">{{ shot.voice_text }}</textarea></label>
+        <label>环境音描述 <textarea name="ambience_text" rows="2">{{ shot.ambience_text }}</textarea></label>
+        <label>审核备注 <textarea name="notes" rows="2">{{ shot.notes }}</textarea></label>
+        <div class="form-row">
+          <label>工作流模板
+            <select name="workflow_template_id">
+              <option value="">（按类别取默认）</option>
+              {% for workflow in workflows %}
+              <option value="{{ workflow.id }}" {{ 'selected' if shot.workflow_template_id == workflow.id }}
+                {{ '' if workflow.enabled else 'disabled' }}>[{{ workflow_categories.get(workflow.category, workflow.category) }}] {{ workflow.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>指定节点
+            <select name="endpoint_id">
+              <option value="">（自动）</option>
+              {% for endpoint in endpoints %}
+              <option value="{{ endpoint.id }}" {{ 'selected' if shot.endpoint_id == endpoint.id }}>{{ endpoint.name }}（{{ endpoint.status }}）</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+        <button class="btn primary" type="submit">保存修改</button>
+        <p class="hint">修改提示词不会覆盖旧版本；已采用的版本会标记「配置过期」提示重做。</p>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>版本历史（{{ versions|length }}）</h2>
+      {% for version in versions | reverse %}
+      {% set assets = version_assets.get(version.id, []) %}
+      <div class="version-row {{ 'selected' if shot.selected_version_id == version.id }}">
+        <div class="version-head">
+          <span class="tag {{ status_css(version.status) }}">{{ version_type_labels.get(version.version_type, version.version_type) }} v{{ version.version_number }}</span>
+          <span class="muted">{{ fmt_dt(version.created_at) }}</span>
+          <span class="tag {{ 'st-ok' if version.status == 'accepted' else status_css(version.status) }}">{{ version_status_labels.get(version.status, version.status) }}</span>
+          {% if version.source == 'imported' %}<span class="tag ghost-tag">导入</span>{% endif %}
+        </div>
+        <div class="version-assets" data-lightbox-group="shot-{{ shot.id }}-versions">
+          {% for asset in assets %}
+            {% if asset.asset_type == 'video' %}
+            <div class="va-video">
+              <video controls preload="none" src="/media/{{ asset.file_path }}"></video>
+              <button type="button" class="lb-zoom" title="全屏预览"
+                      data-lightbox="/media/{{ asset.file_path }}" data-lightbox-video="1"
+                      data-lightbox-caption="{{ shot.shot_code }} v{{ version.version_number }}">&#10530;</button>
+            </div>
+            {% elif asset.asset_type == 'image' %}
+            <a href="/media/{{ asset.file_path }}" data-lightbox="/media/{{ asset.file_path }}"
+               data-lightbox-caption="{{ shot.shot_code }} v{{ version.version_number }} 图片">
+              <img loading="lazy" src="/thumb/{{ asset.id }}" alt="v{{ version.version_number }}"></a>
+            {% else %}
+            <audio controls preload="none" src="/media/{{ asset.file_path }}"></audio>
+            {% endif %}
+          {% endfor %}
+        </div>
+        <div class="version-meta mono muted">
+          {% if version.seed is not none %}<span>seed {{ version.seed }}</span>{% endif %}
+          {% if version.parameter_snapshot.get('workflow_name') %}<span>{{ version.parameter_snapshot['workflow_name'] }}</span>{% endif %}
+          {% set used_model = version.parameter_snapshot.get('params', {}).get('image_model') or version.parameter_snapshot.get('params', {}).get('video_model') %}
+          {% if used_model %}<span title="生成使用的模型">{{ used_model }}</span>{% endif %}
+          {% if version.parameter_snapshot.get('error') %}<span class="st-failed">{{ version.parameter_snapshot['error'][:80] }}</span>{% endif %}
+        </div>
+        <div class="version-actions">
+          {% if version.version_type == 'video' and assets %}
+          <form hx-post="/api/shots/{{ shot.id }}/select-version" 
+                method="post" action="/api/shots/{{ shot.id }}/select-version">
+            <input type="hidden" name="version_id" value="{{ version.id }}">
+            <button class="btn small {{ 'ghost' if shot.selected_version_id == version.id else 'primary' }}" type="submit"
+              {{ 'disabled' if shot.selected_version_id == version.id }}>
+              {{ '当前采用' if shot.selected_version_id == version.id else '采用为最终版' }}</button>
+          </form>
+          {% endif %}
+          {% if version.version_type == 'video' and assets %}
+          <a class="btn small ghost" href="/projects/{{ project.id }}/shots/{{ shot.id }}/compare?v2={{ version.id }}">对比</a>
+          {% endif %}
+          {% if version.created_by_job_id %}<a class="btn small ghost mono" href="/jobs/{{ version.created_by_job_id }}">任务</a>{% endif %}
+        </div>
+      </div>
+      {% else %}
+      <p class="hint">还没有版本。提交生成或登记已有文件后会出现在这里，历史版本永不覆盖。</p>
+      {% endfor %}
+    </div>
+
+    <div class="panel">
+      <h2>任务记录</h2>
+      {% if jobs %}
+      <table class="table">
+        <thead><tr><th>状态</th><th>类型</th><th>步骤</th><th>时间</th></tr></thead>
+        <tbody>
+          {% for job in jobs %}
+          <tr>
+            <td><span class="tag {{ status_css(job.status) }}">{{ job_status_labels.get(job.status, job.status) }}</span></td>
+            <td>{{ job_type_labels.get(job.job_type, job.job_type) }}</td>
+            <td><a class="mono" href="/jobs/{{ job.id }}">{{ job.current_step or '—' }}</a></td>
+            <td class="muted mono">{{ fmt_dt(job.created_at) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <p class="hint">暂无任务。</p>
+      {% endif %}
+    </div>
+
+    <div class="panel">
+      <h2>审核记录</h2>
+      {% if reviews %}
+      <ul class="review-list">
+        {% for review in reviews %}
+        <li>
+          <span class="tag {{ 'st-ok' if review.decision in ('approved', 'accepted') else 'st-warn' if review.decision == 'returned' else '' }}">
+            {{ review_decisions.get(review.decision, review.decision) }}</span>
+          <span class="muted">{{ fmt_dt(review.created_at) }}</span>
+          {% if review.comment %}<span>{{ review.comment[:80] }}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="hint">暂无审核记录。</p>
+      {% endif %}
+      <form hx-post="/api/shots/{{ shot.id }}/review" 
+            method="post" action="/api/shots/{{ shot.id }}/review" class="form-grid">
+        <input type="hidden" name="action" value="comment">
+        <label>追加备注 <textarea name="comment" rows="2" required></textarea></label>
+        <button class="btn" type="submit">保存备注</button>
+      </form>
+    </div>
+  </section>
+</div>
+<div id="flash-anchor"></div>
+{% endblock %}

@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# 工作台运行时数据（含 API Key 的 config.json 见 workbench/.gitignore）
+workbench/data/
+
+# 生成产物与素材（475MB+ 视频，不入库）
+outputs/
+projects/
+
+# 媒体与二进制
+*.mp4
+*.mov
+*.webm
+*.png
+!workbench/static/*.png
+*.wav
+*.mp3
+
+# 系统杂项
+Thumbs.db
+.DS_Store

@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% set nav_active = 'jobs' %}
+{% block title %}任务 {{ job.id }} · 任务中心{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1 class="mono">任务 {{ job.id }}</h1>
+  <div class="page-head-actions">
+    <a class="btn" href="/jobs">&#8592; 任务中心</a>
+  </div>
+</div>
+
+<div class="panel-grid two">
+  <section class="panel">
+    {% include "partials/job_status.html" %}
+    <table class="table keyval">
+      <tbody>
+        <tr><th>任务类型</th><td>{{ job_type_labels.get(job.job_type, job.job_type) }}</td></tr>
+        <tr><th>项目</th><td>{% if project %}<a href="/projects/{{ project.id }}">{{ project.name }}</a>{% else %}—{% endif %}</td></tr>
+        <tr><th>分镜</th><td>{% if shot %}<a href="/projects/{{ project.id if project else '' }}/shots/{{ shot.id }}" class="mono">{{ shot.shot_code }}</a>{% else %}—{% endif %}</td></tr>
+        <tr><th>版本</th><td>{% if version %}<span class="mono">{{ version.version_type }} v{{ version.version_number }}</span>{% else %}—{% endif %}</td></tr>
+        <tr><th>执行节点</th><td>{{ job.endpoint_name or '本地' }}{% if job.endpoint_id %} <span class="mono muted">({{ job.endpoint_id }})</span>{% endif %}</td></tr>
+        <tr><th>外部任务 ID</th><td class="mono">{{ job.external_job_id or '—' }}</td></tr>
+        <tr><th>尝试次数</th><td>{{ job.attempt }}</td></tr>
+        <tr><th>排队时间</th><td class="mono">{{ fmt_dt_full(job.queued_at) }}</td></tr>
+        <tr><th>开始时间</th><td class="mono">{{ fmt_dt_full(job.started_at) }}</td></tr>
+        <tr><th>完成时间</th><td class="mono">{{ fmt_dt_full(job.finished_at) }}</td></tr>
+        <tr><th>最后心跳</th><td class="mono">{{ fmt_dt_full(job.last_heartbeat_at) }}</td></tr>
+      </tbody>
+    </table>
+    <div class="action-row">
+      {% if job.status in ('queued', 'running') %}
+      <form method="post" action="/api/jobs/{{ job.id }}/cancel"><button class="btn" type="submit">取消任务</button></form>
+      {% endif %}
+      {% if job.status in ('failed', 'cancelled') %}
+      <form method="post" action="/api/jobs/{{ job.id }}/retry"><button class="btn primary" type="submit">重试</button></form>
+      {% endif %}
+      <form method="post" action="/api/jobs/{{ job.id }}/rerun"><button class="btn ghost" type="submit">用相同参数重跑</button></form>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>执行日志（每 3 秒刷新）</h2>
+    <pre class="log" id="job-log" hx-get="/jobs/{{ job.id }}/log" hx-trigger="every 3s" hx-swap="innerHTML">{{ log or '（暂无日志）' }}</pre>
+  </section>
+</div>
+
+<section class="panel">
+  <h2>请求快照</h2>
+  <details open>
+    <summary>参数（不含工作流图）</summary>
+    <pre class="log">{{ snapshot_json }}</pre>
+  </details>
+  {% if (job.request_snapshot or {}).get('workflow', {}).get('graph') %}
+  <details>
+    <summary>工作流图 JSON</summary>
+    <pre class="log">{{ job.request_snapshot['workflow']['graph'] | tojson(indent=2) }}</pre>
+  </details>
+  {% endif %}
+</section>
+{% endblock %}

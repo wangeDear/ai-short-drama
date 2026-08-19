@@ -1,0 +1,115 @@
+{% set view_mode = view_mode | default('card') %}
+{% set sv = views[shot.id] %}
+<div class="shot-card {{ 'compact' if view_mode == 'list' }}" id="shot-{{ shot.id }}">
+  <div class="shot-card-head">
+    <label class="shot-check"><input type="checkbox" form="batch-form" name="shot_ids" value="{{ shot.id }}"></label>
+    <a class="shot-code mono" href="/projects/{{ project.id }}/shots/{{ shot.id }}" title="打开分镜详情">{{ shot.shot_code }}</a>
+    <span class="shot-title">{{ shot.title or shot.description[:24] }}</span>
+    <span class="tag {{ status_css(shot.status) }}">{{ shot_status_labels.get(shot.status, shot.status) }}</span>
+    {% if shot.video_config_stale %}<span class="tag st-warn">配置过期</span>{% endif %}
+    <span class="shot-dur mono muted">{{ shot.duration|int }}s</span>
+    {% if shot.scene %}<span class="tag ghost-tag">{{ shot.scene }}</span>{% endif %}
+  </div>
+
+  {% if sv.active_job %}
+  <div class="job-line {{ status_css(sv.active_job.status) }}">
+    <span class="spin" aria-hidden="true"></span>
+    <span>{{ job_type_labels.get(sv.active_job.job_type, sv.active_job.job_type) }} · {{ sv.active_job.current_step or '…' }}</span>
+    <a class="mono muted" href="/jobs/{{ sv.active_job.id }}">{{ sv.active_job.id[-8:] }}</a>
+  </div>
+  {% elif sv.last_failed_job %}
+  <div class="job-line st-failed">
+    <span>失败：{{ (sv.last_failed_job.error_message or '查看日志')[:100] }}</span>
+    <a class="mono muted" href="/jobs/{{ sv.last_failed_job.id }}">日志</a>
+  </div>
+  {% endif %}
+
+  <div class="shot-media" data-lightbox-group="shot-{{ shot.id }}">
+    <div class="shot-media-image">
+      {% if sv.image_asset %}
+      <a href="/media/{{ sv.image_asset.file_path }}" data-lightbox="/media/{{ sv.image_asset.file_path }}"
+         data-lightbox-caption="{{ shot.shot_code }} 分镜图 v{{ sv.image_version.version_number if sv.image_version }}">
+        <img loading="lazy" src="/thumb/{{ sv.image_asset.id }}" alt="{{ shot.shot_code }} 分镜图"
+             onerror="this.closest('.shot-media-image').classList.add('no-thumb');this.remove()">
+      </a>
+      {% else %}
+      <div class="media-placeholder">暂无分镜图</div>
+      {% endif %}
+      {% if sv.image_version %}
+      <span class="version-chip mono">图 v{{ sv.image_version.version_number }}</span>
+      {% endif %}
+    </div>
+    <div class="shot-media-video">
+      {% set shown_asset = sv.selected_asset or sv.video_asset %}
+      {% if shown_asset %}
+      <video controls preload="metadata" src="/media/{{ shown_asset.file_path }}"></video>
+      <button type="button" class="lb-zoom" title="全屏预览"
+              data-lightbox="/media/{{ shown_asset.file_path }}" data-lightbox-video="1"
+              data-lightbox-caption="{{ shot.shot_code }} 视频 v{{ (sv.selected_version or sv.video_version).version_number }}">&#10530;</button>
+      <span class="version-chip mono">
+        {% if sv.selected_asset %}采用 v{{ sv.selected_version.version_number }}{% elif sv.video_version %}最新 v{{ sv.video_version.version_number }}{% endif %}
+      </span>
+      {% else %}
+      <div class="media-placeholder">暂无视频</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if sv.reference_assets %}
+  <div class="shot-refs">
+    {% for asset in sv.reference_assets[:5] %}
+    <a href="/media/{{ asset.file_path }}" target="_blank" rel="noopener" title="{{ asset.original_filename }}">
+      <img loading="lazy" src="/thumb/{{ asset.id }}" alt="参考图"
+           onerror="this.parentElement.classList.add('thumb-missing');this.remove()">
+    </a>
+    {% endfor %}
+    {% if sv.reference_assets|length > 5 %}<span class="muted">+{{ (sv.reference_assets|length) - 5 }}</span>{% endif %}
+  </div>
+  {% endif %}
+
+  {% if sv.audio_asset %}
+  <div class="shot-audio">
+    <span class="muted">配音</span>
+    <audio controls preload="none" src="/media/{{ sv.audio_asset.file_path }}"></audio>
+  </div>
+  {% endif %}
+
+  <div class="shot-prompts">
+    {% if shot.image_prompt %}<p class="prompt-line" title="{{ shot.image_prompt }}"><b>图:</b> {{ shot.image_prompt[:90] }}{% if shot.image_prompt|length > 90 %}…{% endif %}</p>{% endif %}
+    {% if shot.video_prompt %}<p class="prompt-line" title="{{ shot.video_prompt }}"><b>视频:</b> {{ shot.video_prompt[:90] }}{% if shot.video_prompt|length > 90 %}…{% endif %}</p>{% endif %}
+    {% if shot.notes %}<p class="prompt-line muted" title="{{ shot.notes }}"><b>备注:</b> {{ shot.notes[:80] }}</p>{% endif %}
+  </div>
+
+  <div class="shot-meta mono muted">
+    <span>视频 v{{ sv.version_counts.get('video', 0) }} 版</span>
+    {% if shot.seed is not none %}<span>seed {{ shot.seed }}</span>{% endif %}
+    {% if shot.characters %}<span>{{ shot.characters }}</span>{% endif %}
+    <a href="/projects/{{ project.id }}/shots/{{ shot.id }}/compare{{ '?type=video' if sv.version_counts.get('video', 0) >= 2 }}">对比{% if sv.version_counts.get('video', 0) >= 2 %}({{ sv.version_counts.get('video') }}){% endif %}</a>
+  </div>
+
+  <div class="shot-actions">
+    <form hx-post="/api/shots/{{ shot.id }}/review" hx-target="closest .shot-card" hx-swap="outerHTML"
+          method="post" action="/api/shots/{{ shot.id }}/review">
+      <input type="hidden" name="action" value="approve_image">
+      <button class="btn small" type="submit">批准图片</button>
+    </form>
+    <form hx-post="/api/shots/{{ shot.id }}/review" hx-target="closest .shot-card" hx-swap="outerHTML"
+          method="post" action="/api/shots/{{ shot.id }}/review">
+      <input type="hidden" name="action" value="return_image">
+      <button class="btn small ghost" type="submit">退回图片</button>
+    </form>
+    <details class="menu">
+      <summary class="btn small">生成</summary>
+      <div class="menu-body">
+        {% for jt, jt_label in [('image', '生成图片'), ('video', '生成视频'), ('voice', '生成配音'), ('ambience', '生成环境音')] %}
+        <form hx-post="/api/shots/{{ shot.id }}/generate" hx-target="closest .shot-card" hx-swap="outerHTML"
+              method="post" action="/api/shots/{{ shot.id }}/generate">
+          <input type="hidden" name="job_type" value="{{ jt }}">
+          <button class="btn small" type="submit">{{ jt_label }}</button>
+        </form>
+        {% endfor %}
+      </div>
+    </details>
+    <a class="btn small ghost" href="/projects/{{ project.id }}/shots/{{ shot.id }}">详情 / 编辑</a>
+  </div>
+</div>

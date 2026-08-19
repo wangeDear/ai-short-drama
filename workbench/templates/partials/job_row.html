@@ -1,0 +1,62 @@
+<tr class="job-row {{ 'row-active' if job.status in ('queued', 'running') }}" id="job-{{ job.id }}">
+  <td>
+    <span class="tag {{ status_css(job.status) }}">{{ job_status_labels.get(job.status, job.status) }}</span>
+    {% if job.attempt > 1 %}<span class="muted mono">×{{ job.attempt }}</span>{% endif %}
+  </td>
+  <td>{{ job_type_labels.get(job.job_type, job.job_type) }}</td>
+  <td class="mono">
+    {% set project_name = project_names.get(job.project_id, '—') if project_names is defined else (project.name if project is defined else '—') %}
+    {% set shot_code = shot_codes.get(job.shot_id, '') if shot_codes is defined else (shot.shot_code if shot is defined else '') %}
+    <span title="{{ project_name }}">{{ project_name[:14] }}</span>
+    {% if shot_code %}<span class="muted"> / {{ shot_code }}</span>{% endif %}
+  </td>
+  <td class="muted">{{ job.endpoint_name or '本地' }}</td>
+  <td class="step-cell">
+    {% if job.status == 'running' %}<span class="spin inline" aria-hidden="true"></span>{% endif %}
+    {{ job.current_step or '—' }}
+    {% if job.error_message %}<div class="error-line">{{ job.error_message[:80] }}</div>{% endif %}
+  </td>
+  <td>
+    <div class="progress-bar small"><span style="width: {{ job.progress }}%"></span></div>
+    <span class="mono muted">{{ job.progress }}%</span>
+  </td>
+  <td class="mono">
+    {% if job.status == 'queued' %}
+    <form hx-post="/api/jobs/{{ job.id }}/priority" hx-target="closest tr" hx-swap="outerHTML"
+          method="post" action="/api/jobs/{{ job.id }}/priority" class="inline">
+      <input type="hidden" name="delta" value="10"><button class="btn tiny" type="submit" title="提高优先级">+</button>
+    </form>
+    {{ job.priority }}
+    <form hx-post="/api/jobs/{{ job.id }}/priority" hx-target="closest tr" hx-swap="outerHTML"
+          method="post" action="/api/jobs/{{ job.id }}/priority" class="inline">
+      <input type="hidden" name="delta" value="-10"><button class="btn tiny" type="submit" title="降低优先级">−</button>
+    </form>
+    {% else %}{{ job.priority }}{% endif %}
+  </td>
+  <td class="mono muted">{{ fmt_dt(job.queued_at) }}<br>{{ fmt_dt(job.started_at) }}</td>
+  <td class="mono muted">
+    {% if job.started_at %}
+      {{ fmt_duration(((job.finished_at or job.last_heartbeat_at) - job.started_at).total_seconds()) }}
+    {% else %}—{% endif %}
+  </td>
+  <td class="actions-cell">
+    {% if job.status in ('queued', 'running') %}
+    <form hx-post="/api/jobs/{{ job.id }}/cancel" hx-target="closest tr" hx-swap="outerHTML"
+          method="post" action="/api/jobs/{{ job.id }}/cancel" class="inline">
+      <button class="btn tiny" type="submit">取消</button>
+    </form>
+    {% endif %}
+    {% if job.status in ('failed', 'cancelled') %}
+    <form hx-post="/api/jobs/{{ job.id }}/retry" hx-target="closest tr" hx-swap="outerHTML"
+          method="post" action="/api/jobs/{{ job.id }}/retry" class="inline">
+      <button class="btn tiny" type="submit">重试</button>
+    </form>
+    {% endif %}
+    {% if job.status in ('succeeded', 'failed', 'cancelled') %}
+    <form method="post" action="/api/jobs/{{ job.id }}/rerun" class="inline">
+      <button class="btn tiny ghost" type="submit" title="用相同参数创建新任务">重跑</button>
+    </form>
+    {% endif %}
+    <a class="btn tiny ghost" href="/jobs/{{ job.id }}">详情</a>
+  </td>
+</tr>

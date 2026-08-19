@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Project023 导演审核台</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-block">
+          <div class="brand-mark">P23</div>
+          <div>
+            <p class="eyebrow">AI SHORT DRAMA WORKSPACE</p>
+            <h1 id="project-title">导演审核台</h1>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span id="runner-state" class="runner-pill">检查 Runner…</span>
+          <button class="button button-ghost" id="refresh-button">刷新</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="hero-panel">
+          <div class="hero-copy">
+            <p class="eyebrow">CURRENT EPISODE</p>
+            <h2 id="episode-title">加载中…</h2>
+            <p id="episode-subtitle" class="hero-description"></p>
+            <div class="stats-row">
+              <div class="stat"><strong id="stat-total">0</strong><span>视频段</span></div>
+              <div class="stat"><strong id="stat-images">0</strong><span>分镜已确认</span></div>
+              <div class="stat"><strong id="stat-videos">0</strong><span>视频已采用</span></div>
+              <div class="stat"><strong id="stat-issues">0</strong><span>待调整</span></div>
+            </div>
+          </div>
+          <div class="final-preview" id="final-preview"></div>
+        </section>
+
+        <section class="workspace-toolbar">
+          <div class="filter-tabs" id="filter-tabs">
+            <button class="filter-tab active" data-filter="all">全部</button>
+            <button class="filter-tab" data-filter="pending">待确认</button>
+            <button class="filter-tab" data-filter="approved">已采用</button>
+            <button class="filter-tab" data-filter="issues">需调整</button>
+          </div>
+          <div class="toolbar-summary" id="toolbar-summary"></div>
+        </section>
+
+        <section id="segment-grid" class="segment-grid" aria-live="polite"></section>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status"></div>
+    <script type="module" src="/static/app.js"></script>
+  </body>
+</html>

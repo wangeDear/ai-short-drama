@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} · 概览{% endblock %}
+{% block content %}
+{% include "partials/active_jobs_bar.html" %}
+<div class="page-head">
+  <h1>{{ project.name }}</h1>
+  <div class="page-head-actions">
+    <a class="btn {{ 'primary' if gate_states and (gate_states[0].status in ['empty', 'pending']) else '' }}" href="/projects/{{ project.id }}/creative">创意与剧本</a>
+    <a class="btn" href="/projects/{{ project.id }}/bible">生产设定</a>
+    <a class="btn" href="/projects/{{ project.id }}/shots">进入分镜工作台</a>
+    <form method="post" action="/api/projects/{{ project.id }}/archive" class="inline">
+      {% if project.is_archived %}
+      <input type="hidden" name="archived" value="0"><button class="btn" type="submit">恢复项目</button>
+      {% else %}
+      <input type="hidden" name="archived" value="1"><button class="btn danger-ghost" type="submit"
+        data-confirm="归档后可在项目列表（显示归档）中恢复，确认归档？">归档项目</button>
+      {% endif %}
+    </form>
+    <details class="menu danger-menu">
+      <summary class="btn danger-ghost">删除…</summary>
+      <div class="menu-body">
+        <form method="post" action="/api/projects/{{ project.id }}/delete"
+              data-confirm="永久删除项目「{{ project.name }}」？该操作不可撤销：项目、分镜、版本、任务与审核记录都会被清除，导入的源文件保留。">
+          <label class="checkline danger-note">
+            <input type="checkbox" name="delete_files" value="on">
+            同时删除生成的项目文件（projects/{{ project.id }}/）
+          </label>
+          <button class="btn danger" type="submit">确认永久删除</button>
+        </form>
+      </div>
+    </details>
+  </div>
+</div>
+
+<div class="stat-strip">
+  <div class="stat-card"><b>{{ stats.total_shots }}</b><span>总分镜</span></div>
+  <div class="stat-card ok"><b>{{ stats.accepted_shots }}</b><span>已通过</span></div>
+  <div class="stat-card run"><b>{{ stats.running_jobs }}</b><span>生成中</span></div>
+  <div class="stat-card queue"><b>{{ stats.queued_jobs }}</b><span>排队</span></div>
+  <div class="stat-card fail"><b>{{ stats.failed_jobs }}</b><span>失败</span></div>
+  <div class="stat-card"><b>{{ version_total }}</b><span>历史版本</span></div>
+  <div class="stat-card stage"><b>{{ stage }}</b><span>当前阶段</span></div>
+</div>
+
+<section class="panel">
+  <h2>创作卡点 A~D <span class="muted">（刷新/重启后状态可恢复；C/D 通过分镜审核动作推进）</span></h2>
+  <div class="gate-grid">
+    {% for g in gate_states %}
+    <a class="gate-card {{ g.status }}" href="{% if g.gate in ['A'] %}/projects/{{ project.id }}/creative{% elif g.gate == 'B' %}/projects/{{ project.id }}/bible{% else %}/projects/{{ project.id }}/shots{% endif %}">
+      <b>{{ g.gate }} · {{ g.label }}</b>
+      <span class="tag {% if g.status == 'passed' %}st-ok{% elif g.status in ['waiting', 'pending', 'returned'] %}st-warn{% elif g.status == 'failed' %}st-failed{% else %}st-muted{% endif %}">
+        {% if not g.enabled %}已关闭{% else %}{{ {'empty':'未开始','pending':'待生成','waiting':'待审核','returned':'已退回','failed':'失败','passed':'已通过','off':'已关闭'}.get(g.status, g.status) }}{% endif %}
+      </span>
+      <span class="muted">{{ g.reason }}</span>
+      {% if g.pending %}<span class="pipe-count">待办 {{ g.pending }}</span>{% endif %}
+      {% if g.stale %}<span class="pipe-count st-warn">过期 {{ g.stale }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="panel">
+  <h2>生产流水线 · 人工审核卡点</h2>
+  <p class="hint">每个卡点之间由人工确认推进：批量生图 → 人工批准图 → 批量生视频 → 逐镜采用 → 人工提交合成。
+    视频生成被强制要求先有已批准的分镜图（已导入视频的旧分镜可直接重做）。</p>
+  <div class="pipeline-grid">
+    {% set stage_map = {} %}
+    {% for s in stages %}{% set _ = stage_map.update({s.key: s}) %}{% endfor %}
+
+    <div class="pipe-card {{ 'attention' if stage_map['prompt'].count }}">
+      <b>{{ stage_map['prompt'].title }}</b>
+      <span class="pipe-count">{{ stage_map['prompt'].count }} 镜提示词为空</span>
+      {% if stage_map['prompt'].count %}
+      <a class="btn small" href="/projects/{{ project.id }}/shots?q=&status=draft">去补写提示词</a>
+      {% else %}<span class="tag st-ok">已就绪</span>{% endif %}
+    </div>
+
+    <div class="pipe-card {{ 'attention' if stage_map['image_todo'].count or stage_map['image_pending'].count }}">
+      <b>{{ stage_map['image_todo'].title }}</b>
+      {% if stage_map['image_inflight'].count %}
+      <span class="pipe-count st-running">{{ stage_map['image_inflight'].count }} 镜生成中…</span>
+      {% endif %}
+      {% if stage_map['image_todo'].count %}
+      <span class="pipe-count">{{ stage_map['image_todo'].count }} 镜待生图</span>
+      <form method="post" action="/api/projects/{{ project.id }}/shots/batch">
+        {% for sid in stage_map['image_todo'].ids %}<input type="hidden" name="shot_ids" value="{{ sid }}">{% endfor %}
+        <input type="hidden" name="action" value="generate">
+        <input type="hidden" name="job_type" value="image">
+        <button class="btn small primary" type="submit">批量生图</button>
+      </form>
+      {% endif %}
+      {% if stage_map['image_pending'].count %}
+      <span class="pipe-count st-warn">{{ stage_map['image_pending'].count }} 张图片待人工审核</span>
+      <form method="post" action="/api/projects/{{ project.id }}/shots/batch"
+            data-confirm="批量批准 {{ stage_map['image_pending'].count }} 张分镜图？批准后才能生成视频。">
+        {% for sid in stage_map['image_pending'].ids %}<input type="hidden" name="shot_ids" value="{{ sid }}">{% endfor %}
+        <input type="hidden" name="action" value="approve_images">
+        <button class="btn small primary" type="submit">批量批准图片</button>
+      </form>
+      <a class="btn small ghost" href="/projects/{{ project.id }}/shots?status=image_review">先逐张检查</a>
+      {% endif %}
+      {% if not stage_map['image_todo'].count and not stage_map['image_pending'].count and not stage_map['image_inflight'].count %}
+      <span class="tag st-ok">图片环节完成</span>
+      {% endif %}
+    </div>
+
+    <div class="pipe-card {{ 'attention' if stage_map['video_ready'].count }}">
+      <b>{{ stage_map['video_ready'].title }}</b>
+      {% if stage_map['video_inflight'].count %}
+      <span class="pipe-count st-running">{{ stage_map['video_inflight'].count }} 镜生成中…</span>
+      {% endif %}
+      {% if stage_map['video_ready'].count %}
+      <span class="pipe-count">{{ stage_map['video_ready'].count }} 镜图片已批准、待人工提交视频生成</span>
+      <form method="post" action="/api/projects/{{ project.id }}/shots/batch"
+            data-confirm="批量提交 {{ stage_map['video_ready'].count }} 个视频生成任务？">
+        {% for sid in stage_map['video_ready'].ids %}<input type="hidden" name="shot_ids" value="{{ sid }}">{% endfor %}
+        <input type="hidden" name="action" value="generate">
+        <input type="hidden" name="job_type" value="video">
+        <button class="btn small primary" type="submit">批量提交视频生成</button>
+      </form>
+      {% else %}
+      <span class="tag {{ 'st-muted' if stage_map['video_pending'].count == 0 and stage_map['selected'].count == 0 else 'st-ok' }}">
+        {{ '视频环节完成' if stage_map['selected'].count or stage_map['video_pending'].count == 0 else '等待图片批准' }}</span>
+      {% endif %}
+    </div>
+
+    <div class="pipe-card {{ 'attention' if stage_map['video_pending'].count }}">
+      <b>{{ stage_map['video_pending'].title }}</b>
+      {% if stage_map['video_pending'].count %}
+      <span class="pipe-count">{{ stage_map['video_pending'].count }} 镜有视频候选，待人工对比采用</span>
+      <a class="btn small primary" href="/projects/{{ project.id }}/shots">去逐镜审核采用</a>
+      {% else %}
+      <span class="tag {{ 'st-ok' if stage_map['selected'].count else 'st-muted' }}">{{ stage_map['selected'].count }}/{{ stage_map['selected'].count + stage_map['video_pending'].count }} 已采用</span>
+      {% endif %}
+    </div>
+
+    <div class="pipe-card">
+      <b>{{ stage_map['selected'].title }}</b>
+      <span class="pipe-count">{{ stage_map['selected'].count }} / {{ stats.total_shots }} 镜已采用最终版</span>
+      <a class="btn small {{ 'primary' if stage_map['selected'].count else 'ghost' }}" href="/projects/{{ project.id }}/final">成片合成</a>
+    </div>
+  </div>
+</section>
+
+<div class="panel-grid two">
+  <section class="panel">
+    <h2>项目设置</h2>
+    <form method="post" action="/api/projects/{{ project.id }}/update" class="form-grid">
+      <label>名称 <input name="name" value="{{ project.name }}" maxlength="120"></label>
+      <label>简介 <input name="description" value="{{ project.description }}" maxlength="300"></label>
+      <div class="form-row">
+        <label>画面比例
+          <select name="aspect_ratio">
+            {% for ratio in ['9:16', '16:9', '1:1'] %}
+            <option value="{{ ratio }}" {{ 'selected' if project.aspect_ratio == ratio }}>{{ ratio }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>分辨率 <input name="resolution" value="{{ project.resolution }}" pattern="\d+x\d+"></label>
+        <label>帧率 <input name="fps" type="number" value="{{ project.fps }}" min="12" max="60"></label>
+      </div>
+      <button class="btn primary" type="submit">保存</button>
+    </form>
+    <h3>分镜状态分布</h3>
+    <div class="status-distribution">
+      {% for status, count in status_counts.items() %}
+      <a class="dist-row" href="/projects/{{ project.id }}/shots?status={{ status }}">
+        <span class="tag {{ status_css(status) }}">{{ shot_status_labels.get(status, status) }}</span>
+        <b>{{ count }}</b>
+      </a>
+      {% else %}
+      <p class="hint">还没有分镜。</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>最近任务</h2>
+    {% if recent_jobs %}
+    <table class="table">
+      <thead><tr><th>状态</th><th>类型</th><th>分镜</th><th>步骤</th><th>更新</th></tr></thead>
+      <tbody>
+        {% for job in recent_jobs %}
+        <tr>
+          <td><span class="tag {{ status_css(job.status) }}">{{ job_status_labels.get(job.status, job.status) }}</span></td>
+          <td>{{ job_type_labels.get(job.job_type, job.job_type) }}</td>
+          <td class="mono"><a href="/jobs/{{ job.id }}">{{ job.current_step or '—' }}</a></td>
+          <td class="muted">{{ (job.error_message or '')[:60] }}</td>
+          <td class="muted mono">{{ fmt_dt(job.updated_at) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="hint">暂无任务。进入分镜工作台提交生成。</p>
+    {% endif %}
+    <a class="btn" href="/jobs?project={{ project.id }}">查看本项目全部任务</a>
+  </section>
+</div>
+
+{% if stats.last_final %}
+<section class="panel">
+  <h2>最近成片</h2>
+  <div class="final-preview-row">
+    <video controls preload="metadata" src="/media/{{ stats.last_final.file_path }}"></video>
+    <div class="mono muted">{{ stats.last_final.file_path }}<br>{{ fmt_size(stats.last_final.size_bytes) }} · {{ fmt_duration(stats.last_final.duration) }}</div>
+  </div>
+  <a class="btn" href="/projects/{{ project.id }}/final">成片管理</a>
+</section>
+{% endif %}
+{% endblock %}

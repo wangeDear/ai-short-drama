@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}角色与资产 · {{ project.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>角色与资产</h1>
+  <div class="page-head-actions"><a class="btn" href="/projects/{{ project.id }}">&#8592; 项目概览</a></div>
+</div>
+
+<div class="panel-grid two">
+  <section class="panel">
+    <h2>新建角色</h2>
+    <form method="post" action="/api/projects/{{ project.id }}/characters/create" class="form-grid">
+      <label>名称 <input name="name" required maxlength="60"></label>
+      <label>描述 <input name="description" maxlength="300"></label>
+      <label>默认提示词片段 <textarea name="prompt_fragment" rows="2" placeholder="外观、服装、风格关键词"></textarea></label>
+      <button class="btn primary" type="submit">创建</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>公共资产（场景 / 道具 / 遮罩 / 控制视频）</h2>
+    <form method="post" action="/api/projects/{{ project.id }}/assets/upload" enctype="multipart/form-data" class="form-grid">
+      <div class="form-row">
+        <label>类型
+          <select name="asset_type">
+            <option value="reference">参考图</option>
+            <option value="mask">遮罩（前景保护）</option>
+            <option value="control">控制视频</option>
+            <option value="scene">场景参考</option>
+            <option value="prop">道具参考</option>
+            <option value="sound">音效</option>
+            <option value="subtitle">字幕/片头素材</option>
+          </select>
+        </label>
+        <label>标签 <input name="label" maxlength="60"></label>
+      </div>
+      <label>文件 <input type="file" name="file" required></label>
+      <button class="btn primary" type="submit">上传</button>
+    </form>
+    <p class="hint">遮罩与控制视频仅存储与预览（FR-CHAR-003），不自动抠像。</p>
+  </section>
+</div>
+
+<section class="panel">
+  <h2>角色档案（{{ characters|length }}）</h2>
+  {% if characters %}
+  <div class="character-grid">
+    {% for character in characters %}
+    <div class="character-card">
+      <div class="character-head">
+        <strong>{{ character.name }}</strong>
+        <form method="post" action="/api/characters/{{ character.id }}/delete" class="inline"
+              data-confirm="删除角色 {{ character.name }}？（参考图文件保留）">
+          <button class="btn small ghost" type="submit">删除</button>
+        </form>
+      </div>
+      {% if character.description %}<p class="muted">{{ character.description }}</p>{% endif %}
+      {% if character.prompt_fragment %}<p class="prompt-line mono">{{ character.prompt_fragment[:120] }}</p>{% endif %}
+      <div class="ref-grid">
+        {% for asset in character_assets.get(character.id, []) %}
+        <a href="/media/{{ asset.file_path }}" target="_blank" rel="noopener" title="{{ asset.original_filename }}">
+          <img loading="lazy" src="/thumb/{{ asset.id }}" alt="{{ character.name }}">
+        </a>
+        {% endfor %}
+      </div>
+      <form method="post" action="/api/characters/{{ character.id }}/reference" enctype="multipart/form-data" class="inline-form">
+        <input type="file" name="file" required>
+        <button class="btn small" type="submit">上传参考图</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="hint">还没有角色。左侧创建角色并上传正面/侧面/全身参考图。</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h2>公共资产库（{{ public_assets|length }}）</h2>
+  {% if public_assets %}
+  <div class="asset-grid">
+    {% for asset in public_assets %}
+    <div class="asset-card">
+      {% if asset.mime_type.startswith('image') %}
+      <a href="/media/{{ asset.file_path }}" target="_blank" rel="noopener">
+        <img loading="lazy" src="/thumb/{{ asset.id }}" alt="{{ asset.original_filename }}"></a>
+      {% elif asset.mime_type.startswith('video') %}
+      <video controls preload="none" src="/media/{{ asset.file_path }}"></video>
+      {% elif asset.mime_type.startswith('audio') %}
+      <audio controls preload="none" src="/media/{{ asset.file_path }}"></audio>
+      {% else %}
+      <a class="mono" href="/media/{{ asset.file_path }}">{{ asset.original_filename }}</a>
+      {% endif %}
+      <div class="asset-meta">
+        <span class="tag ghost-tag">{{ asset_type_labels.get(asset.asset_type, asset.asset_type) }}</span>
+        <span class="mono muted" title="{{ asset.file_path }}">{{ asset.original_filename[:26] }}</span>
+        <form method="post" action="/api/assets/{{ asset.id }}/delete" class="inline" data-confirm="删除该资产记录？磁盘文件保留。">
+          <button class="btn small ghost" type="submit">×</button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="hint">暂无公共资产。</p>
+  {% endif %}
+</section>
+{% endblock %}
